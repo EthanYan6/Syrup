@@ -21,27 +21,39 @@ enable_language(C ASM)
 
 option(DEV "Prepare the rolling syrup development firmware" OFF)
 
-find_package(Git QUIET)
-set(BUILD_COMMIT "unknown")
-if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        OUTPUT_VARIABLE BUILD_COMMIT
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-    if(NOT BUILD_COMMIT)
+# Allow -DBUILD_COMMIT=... or BUILD_COMMIT env to override (useful in CI/Docker).
+if(NOT BUILD_COMMIT)
+    if(DEFINED ENV{BUILD_COMMIT} AND NOT "$ENV{BUILD_COMMIT}" STREQUAL "")
+        set(BUILD_COMMIT "$ENV{BUILD_COMMIT}")
+    else()
         set(BUILD_COMMIT "unknown")
     endif()
 endif()
+if(BUILD_COMMIT STREQUAL "unknown")
+    find_package(Git QUIET)
+    if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+        # Bind-mounted trees in Docker often trip "dubious ownership"; force safe.directory.
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" -c safe.directory=* rev-parse --short HEAD
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            OUTPUT_VARIABLE BUILD_COMMIT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+            RESULT_VARIABLE BUILD_COMMIT_GIT_RC
+        )
+        if(BUILD_COMMIT_GIT_RC OR NOT BUILD_COMMIT)
+            set(BUILD_COMMIT "unknown")
+        endif()
+    endif()
+endif()
+message(STATUS "BUILD_COMMIT = ${BUILD_COMMIT}")
 
 if(ENABLE_FEAT_F4HWN)
     if(NOT AUTHOR_STRING_1)
         set(AUTHOR_STRING_1 "EGZUMER")
     endif()
     if(NOT AUTHOR_STRING_2)
-        set(AUTHOR_STRING_2 "F4HWN")
+        set(AUTHOR_STRING_2 "Syrup")
     endif()
     if(NOT VERSION_STRING_1)
         set(VERSION_STRING_1 "v0.22")

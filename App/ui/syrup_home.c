@@ -53,6 +53,12 @@
 #define SH_METER_PAD_Y       1u
 #define SH_METER_TEXT_H      6u   /* gFont3x5 glyph height */
 
+/* Last-RX placeholder: speaker icon + channel name, centered in wave row */
+#define SH_SPK_W             12u
+#define SH_SPK_H             8u
+#define SH_SPK_GAP           3u
+#define SH_NAME_MAX          10u
+
 static uint8_t  s_rx_band[SH_RX_COLS]; /* current EQ body height */
 static uint8_t  s_rx_tip[SH_RX_COLS];  /* falling peak brick */
 static uint8_t  s_rx_phase;
@@ -61,7 +67,28 @@ static uint8_t  s_tx_bars[SH_TX_BARS];
 static uint8_t  s_tx_hold;             /* louder = hold scroll longer */
 static uint16_t s_tx_floor;            /* adaptive silence floor for big swing */
 static bool     s_was_tx;
+static bool     s_was_rx;
+static bool     s_last_rx_valid;
+static uint8_t  s_last_rx_vfo;
+static uint16_t s_last_rx_channel;
+static bool     s_placeholder_blit_done;
 static uint8_t  s_tick_div;
+
+/* Megaphone + sound waves (column-major, bit0 = top), from UI speaker asset */
+static const uint8_t s_spk_bitmap[SH_SPK_W] = {
+	0b00111100,
+	0b00111100,
+	0b00111100,
+	0b00111100,
+	0b01111110,
+	0b01111110,
+	0b11111111,
+	0b11111111,
+	0b00000000,
+	0b01011011,
+	0b11011011,
+	0b10011001,
+};
 
 static void draw_pixel(uint8_t x, uint8_t y, bool black)
 {
@@ -627,14 +654,83 @@ static void draw_tx_wave(void)
 	}
 }
 
+static void capture_last_rx(void)
+{
+	s_last_rx_vfo = gEeprom.RX_VFO;
+	if (s_last_rx_vfo > 1u)
+		s_last_rx_vfo = 0u;
+	s_last_rx_channel = gEeprom.ScreenChannel[s_last_rx_vfo];
+	s_last_rx_valid = true;
+	s_placeholder_blit_done = false;
+}
+
+static void format_last_rx_name(char *out, size_t out_sz)
+{
+	SETTINGS_FetchChannelName(out, s_last_rx_channel);
+	if (out[0] == '\0') {
+		if (IS_MR_CHANNEL(s_last_rx_channel))
+			snprintf(out, out_sz, "CH-%04u",
+			         (unsigned)(s_last_rx_channel + 1u));
+		else
+			snprintf(out, out_sz, "VFO-%u",
+			         (unsigned)(s_last_rx_vfo + 1u));
+	}
+	out[SH_NAME_MAX] = '\0';
+}
+
+static void draw_spk_bitmap(uint8_t x, uint8_t y_top)
+{
+	for (uint8_t col = 0; col < SH_SPK_W; col++) {
+		const uint8_t bits = s_spk_bitmap[col];
+		for (uint8_t row = 0; row < SH_SPK_H; row++) {
+			if (bits & (uint8_t)(1u << row))
+				draw_pixel((uint8_t)(x + col), (uint8_t)(y_top + row), true);
+		}
+	}
+}
+
+/* Icon + channel name centered H/V in the wave row (idle placeholder) */
+static void draw_last_rx_placeholder(void)
+{
+	char name[22];
+	uint8_t name_w;
+	uint8_t total_w;
+	uint8_t x;
+	uint8_t y;
+	const uint8_t group_h = (SH_SPK_H > 8u) ? SH_SPK_H : 8u; /* gFontSmall is 8px */
+
+	if (!s_last_rx_valid)
+		return;
+
+	format_last_rx_name(name, sizeof(name));
+	name_w = small_text_width(name);
+	total_w = (uint8_t)(SH_SPK_W + SH_SPK_GAP + name_w);
+
+	clear_wave_area();
+
+	if (total_w >= LCD_WIDTH)
+		x = 0u;
+	else
+		x = (uint8_t)((LCD_WIDTH - total_w) / 2u);
+
+	y = (uint8_t)(SH_WAVE_Y + (SH_WAVE_H - group_h) / 2u);
+
+	draw_spk_bitmap(x, y);
+	draw_small_text(name, (uint8_t)(x + SH_SPK_W + SH_SPK_GAP), y, true);
+}
+
 static void draw_wave_row(void)
 {
 	if (gCurrentFunction == FUNCTION_TRANSMIT) {
 		draw_tx_wave();
-	} else {
-		/* RX or idle: keep pillars and let them decay — never hard-blank here */
+	} else if (FUNCTION_IsRx() || rx_pillars_alive()) {
+		/* RX or tip-fall: pillars; S-meter only while actually receiving */
 		draw_rx_wave();
 		draw_s_meter_label();
+	} else if (s_last_rx_valid) {
+		draw_last_rx_placeholder();
+	} else {
+		clear_wave_area();
 	}
 }
 
@@ -670,23 +766,36 @@ void UI_SyrupHome_Tick10ms(void)
 	}
 
 	/* only entering TX wipes RX pillar state */
-	if (tx && !s_was_tx)
+	if (tx && !s_was_tx) {
 		reset_wave_state();
+		s_placeholder_blit_done = false;
+	}
 	s_was_tx = tx;
+
+	if (rx && !s_was_rx)
+		capture_last_rx();
+	s_was_rx = rx;
 
 	if (tx) {
 		sample_tx_wave();
 	} else if (rx) {
 		sample_rx_wave();
+		s_placeholder_blit_done = false;
 	} else if (rx_pillars_alive()) {
 		/* no signal / left RX — keep falling tips, do not clear */
 		sample_rx_decay();
-	} else {
+		s_placeholder_blit_done = false;
+	} else if (!s_last_rx_valid) {
+		return;
+	} else if (s_placeholder_blit_done) {
 		return;
 	}
 
 	draw_wave_row();
 	blit_wave_lines();
+
+	if (!tx && !rx && !rx_pillars_alive() && s_last_rx_valid)
+		s_placeholder_blit_done = true;
 }
 
 void UI_DisplaySyrupHome(void)
@@ -697,8 +806,17 @@ void UI_DisplaySyrupHome(void)
 	if (gCurrentFunction == FUNCTION_TRANSMIT && !s_was_tx)
 		reset_wave_state();
 
+	/* page redraw always refreshes placeholder if shown */
+	s_placeholder_blit_done = false;
+
 	draw_wave_row();
 	draw_channel_row(0);
 	draw_channel_row(1);
 	invert_channel_row(gEeprom.TX_VFO);
+
+	if (gCurrentFunction != FUNCTION_TRANSMIT &&
+	    !FUNCTION_IsRx() &&
+	    !rx_pillars_alive() &&
+	    s_last_rx_valid)
+		s_placeholder_blit_done = true;
 }

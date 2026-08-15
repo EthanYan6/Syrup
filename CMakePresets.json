@@ -86,6 +86,8 @@
                 "ENABLE_SWD": false,
                 "VERSION_STRING_1": "v0.22",
                 "VERSION_STRING_2": "1.0.0",
+                "AUTHOR_STRING_2": "Syrup",
+                "EDITION_STRING": "Syrup",
                 "PACK_PREFIX": "SYRUP",
                 "PACK_SUFFIX": "BD1AHN"
             }
@@ -117,13 +119,12 @@
                 "ENABLE_FEAT_F4HWN_RXTX_LOG": true,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_WRAP": false,
                 "ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER": true,
-                "ENABLE_FEAT_F4HWN_QRCODE": true,
+                "ENABLE_FEAT_F4HWN_QRCODE": false,
                 "ENABLE_FEAT_F4HWN_MEM": true,
                 "ENABLE_FEAT_F4HWN_LOGO": true,
                 "ENABLE_FEAT_F4HWN_LOGO_SAV": true,
                 "ENABLE_FEAT_F4HWN_MENU_CAT": true,
-                "ENABLE_SWD": true,
-                "EDITION_STRING": "Syrup"
+                "ENABLE_SWD": true
             }
         }
     ],

@@ -94,7 +94,7 @@ const t_menu_item MenuList[] =
 #ifdef ENABLE_AUDIO_BAR
     {"MicBar",      MENU_MIC_BAR       },
 #endif
-    {"ChDisp",      MENU_MDF           }, // was "MDF"
+    // {"ChDisp",      MENU_MDF           }, // was "MDF" — hidden
     {"POnMsg",      MENU_PONMSG        },
     {"BLTime",      MENU_ABR           }, // was "ABR"
     {"BLMin",       MENU_ABR_MIN       },
@@ -149,8 +149,8 @@ const t_menu_item MenuList[] =
     {"SetCtr",      MENU_SET_CTR       },
     {"SetInv",      MENU_SET_INV       },
     {"SetLck",      MENU_SET_LCK       },
-    {"SetMet",      MENU_SET_MET       },
-    {"SetGUI",      MENU_SET_GUI       },
+    // {"SetMet",      MENU_SET_MET       }, // hidden
+    // {"SetGUI",      MENU_SET_GUI       }, // hidden
 #ifdef ENABLE_FEAT_F4HWN_AUDIO    
     {"SetRxA",      MENU_SET_AUD       },
 #endif
@@ -623,7 +623,7 @@ static const uint8_t CatPower[]   = {
     MENU_SET_SAV,
 #endif
 };
-static const uint8_t CatDisplay[] = { MENU_MDF, MENU_PONMSG, MENU_ABR, MENU_ABR_MIN, MENU_ABR_MAX, MENU_ABR_ON_TX_RX, MENU_SET_CTR, MENU_SET_INV, MENU_SET_MET, MENU_SET_GUI, MENU_VOL };
+static const uint8_t CatDisplay[] = { MENU_PONMSG, MENU_ABR, MENU_ABR_MIN, MENU_ABR_MAX, MENU_ABR_ON_TX_RX, MENU_SET_CTR, MENU_SET_INV, MENU_VOL };
 static const uint8_t CatTimers[]  = { MENU_TOT, MENU_SET_TOT, MENU_SET_EOT, MENU_SET_TMR };
 static const uint8_t CatAudio[]   = {
     MENU_MIC,
@@ -1426,7 +1426,7 @@ void UI_DisplayMenu(void)
                 // Page 0: firmware identity.
 #ifdef ENABLE_FEAT_F4HWN
                 sprintf(String, "%s\n%s", AUTHOR_STRING_2, DISPLAY_VERSION_STRING_2);
-                UI_PrintStringSmallNormal(Edition, menu_item_x1 - 1, menu_item_x2, 6);
+                UI_PrintStringSmallNormal(PACK_SUFFIX, menu_item_x1 - 1, menu_item_x2, 6);
 #else
                 sprintf(String, "%u.%02uV\n%u%%",
                     gBatteryVoltageAverage / 100, gBatteryVoltageAverage % 100,
