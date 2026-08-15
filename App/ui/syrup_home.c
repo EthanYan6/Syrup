@@ -30,12 +30,12 @@
 #define SH_FB_H            ((uint8_t)(FRAME_LINES * 8u))
 #define SH_GAP_PX          2u
 
-/* RX: stacked blocks — longer (wider) bricks, tight vertical gaps */
+/* RX: stacked blocks — longer (wider) bricks; vertical pack fills SH_WAVE_H */
 #define SH_RX_BLOCK_W      5u   /* longer horizontally */
-#define SH_RX_BLOCK_H      3u
+#define SH_RX_BLOCK_H      3u   /* nominal brick height (actual slots pack to fill row) */
 #define SH_RX_TIP_H        (SH_RX_BLOCK_H / 3u) /* thin peak cap (1px when H=3) */
 #define SH_RX_PITCH_X      6u   /* 5px block + 1px column gap */
-#define SH_RX_PITCH_Y      3u   /* no extra gap between stacked blocks */
+#define SH_RX_PITCH_Y      3u   /* nominal; draw uses even pack into SH_WAVE_H */
 #define SH_RX_MAX_BLOCKS   ((SH_WAVE_H) / SH_RX_PITCH_Y)
 #define SH_RX_COLS         (LCD_WIDTH / SH_RX_PITCH_X)
 #define SH_RX_PAUSE_GATE   12u  /* below this dynamics → silence / peak-fall */
@@ -49,7 +49,7 @@
 
 #define SH_TICK_PERIOD_10MS  5u   /* ~50ms — slower overall */
 #define SH_RX_TIP_FALL       5u   /* tip brick ~250ms per step */
-#define SH_METER_PAD_X       2u
+#define SH_METER_PAD_X       1u
 #define SH_METER_PAD_Y       1u
 #define SH_METER_TEXT_H      6u   /* gFont3x5 glyph height */
 
@@ -483,7 +483,18 @@ static void clear_wave_area(void)
 	fill_rect(0, SH_WAVE_Y, LCD_WIDTH - 1u, y1, false);
 }
 
-/* Top-center S / dBm readout with a cleared rectangular backdrop */
+/* Pack block b (0=bottom) into the full wave row so max height reaches SH_WAVE_Y */
+static void rx_block_ys(uint8_t b_from_bottom, uint8_t *y0, uint8_t *y1)
+{
+	const uint8_t bot = (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u);
+	const uint16_t lo = ((uint16_t)b_from_bottom * SH_WAVE_H) / SH_RX_MAX_BLOCKS;
+	const uint16_t hi = ((uint16_t)(b_from_bottom + 1u) * SH_WAVE_H) / SH_RX_MAX_BLOCKS;
+
+	*y1 = (uint8_t)(bot - lo);
+	*y0 = (uint8_t)(bot - (hi - 1u));
+}
+
+/* Top-center S / dBm — tight plate only; pillars still reach status-bar bottom */
 static void draw_s_meter_label(void)
 {
 	char buf[20];
@@ -491,6 +502,7 @@ static void draw_s_meter_label(void)
 	uint8_t s_level;
 	uint8_t text_w;
 	uint8_t text_x;
+	uint8_t text_y;
 	uint8_t box_x0;
 	uint8_t box_x1;
 	uint8_t box_y0;
@@ -526,41 +538,40 @@ static void draw_s_meter_label(void)
 	else
 		text_x = (uint8_t)((LCD_WIDTH - text_w) / 2u);
 
+	/* flush under status bar (framebuffer y=0); only a small center strip */
+	text_y = (uint8_t)(SH_WAVE_Y + SH_METER_PAD_Y);
+
 	box_x0 = (text_x > SH_METER_PAD_X) ? (uint8_t)(text_x - SH_METER_PAD_X) : 0u;
 	box_x1 = (uint8_t)(text_x + text_w + SH_METER_PAD_X);
 	if (box_x1 >= LCD_WIDTH)
 		box_x1 = LCD_WIDTH - 1u;
 	box_y0 = SH_WAVE_Y;
-	box_y1 = (uint8_t)(SH_WAVE_Y + SH_METER_TEXT_H + SH_METER_PAD_Y);
+	box_y1 = (uint8_t)(text_y + SH_METER_TEXT_H - 1u);
 	if (box_y1 >= (uint8_t)(SH_WAVE_Y + SH_WAVE_H))
 		box_y1 = (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u);
 
-	/* blank plate so waveform does not cut through the digits */
+	/* tight blank plate only behind the digits — not a full-width row */
 	fill_rect(box_x0, box_y0, box_x1, box_y1, false);
-	GUI_DisplaySmallest(buf, text_x, (uint8_t)(SH_WAVE_Y + SH_METER_PAD_Y), false, true);
+	GUI_DisplaySmallest(buf, text_x, text_y, false, true);
 }
 
 static void draw_rx_tip_cap(uint8_t x0, uint8_t tip_level)
 {
-	uint8_t slot_y1;
 	uint8_t slot_y0;
+	uint8_t slot_y1;
 	uint8_t tip_y1;
-	uint8_t tip_y0;
 
 	if (tip_level == 0u || SH_RX_TIP_H == 0u)
 		return;
 
-	/* top of the block slot for this level (same units as body bricks) */
-	slot_y1 = (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u - (tip_level - 1u) * SH_RX_PITCH_Y);
-	slot_y0 = (uint8_t)(slot_y1 - (SH_RX_BLOCK_H - 1u));
+	rx_block_ys((uint8_t)(tip_level - 1u), &slot_y0, &slot_y1);
 
-	/* thin rectangle sits on top of that slot */
-	tip_y1 = (slot_y0 > 0u) ? (uint8_t)(slot_y0 - 1u) : 0u;
-	tip_y0 = (tip_y1 + 1u >= SH_RX_TIP_H)
-	             ? (uint8_t)(tip_y1 - (SH_RX_TIP_H - 1u))
-	             : 0u;
+	/* thin tip flush with the top of this slot (stays inside the wave row) */
+	tip_y1 = (uint8_t)(slot_y0 + SH_RX_TIP_H - 1u);
+	if (tip_y1 > slot_y1)
+		tip_y1 = slot_y1;
 
-	fill_rect(x0, tip_y0, (uint8_t)(x0 + SH_RX_BLOCK_W - 1u), tip_y1, true);
+	fill_rect(x0, slot_y0, (uint8_t)(x0 + SH_RX_BLOCK_W - 1u), tip_y1, true);
 }
 
 static void draw_rx_wave(void)
@@ -574,13 +585,14 @@ static void draw_rx_wave(void)
 		const uint8_t tip  = s_rx_tip[col];
 
 		if (body > 0u) {
-			/* solid pillar while audio present */
+			/* solid pillar while audio present — max body fills the whole row */
 			for (uint8_t b = 0; b < body; b++) {
-				const uint8_t y1 = (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u - b * SH_RX_PITCH_Y);
-				const uint8_t y0 = (uint8_t)(y1 - (SH_RX_BLOCK_H - 1u));
+				uint8_t y0;
+				uint8_t y1;
+				rx_block_ys(b, &y0, &y1);
 				fill_rect(x0, y0, (uint8_t)(x0 + SH_RX_BLOCK_W - 1u), y1, true);
 			}
-			/* thin peak cap on (or above) the pillar */
+			/* thin peak cap on the pillar */
 			if (tip > 0u)
 				draw_rx_tip_cap(x0, tip);
 			else
