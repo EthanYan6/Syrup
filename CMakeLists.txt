@@ -9,7 +9,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
-set(CMAKE_PROJECT_NAME f4hwn)
+set(CMAKE_PROJECT_NAME syrup)
 
 # Enable compile command to ease indexing with e.g. clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
@@ -19,7 +19,7 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 
 enable_language(C ASM)
 
-option(DEV "Prepare the rolling Fusion development firmware" OFF)
+option(DEV "Prepare the rolling syrup development firmware" OFF)
 
 find_package(Git QUIET)
 set(BUILD_COMMIT "unknown")
@@ -47,10 +47,10 @@ if(ENABLE_FEAT_F4HWN)
         set(VERSION_STRING_1 "v0.22")
     endif()
     if(NOT VERSION_STRING_2)
-        set(VERSION_STRING_2 "v4.2")
+        set(VERSION_STRING_2 "1.0.0")
     endif()
     if(NOT EDITION_STRING)
-        set(EDITION_STRING "Custom")
+        set(EDITION_STRING "Syrup")
     endif()
     if(NOT AUTHOR_STRING)
         set(AUTHOR_STRING "${AUTHOR_STRING_1}+${AUTHOR_STRING_2}")
@@ -65,18 +65,23 @@ else()
     if(NOT VERSION_STRING)
         set(VERSION_STRING "NOGIT")
     endif()
+    if(NOT VERSION_STRING_2)
+        set(VERSION_STRING_2 "${VERSION_STRING}")
+    endif()
 endif()
 
-if(TARGET)
-    set(EXE_NAME ${TARGET})
-else()
-    set(EXE_NAME "firmware")
+if(NOT PACK_PREFIX)
+    set(PACK_PREFIX "SYRUP")
 endif()
+if(NOT PACK_SUFFIX)
+    set(PACK_SUFFIX "BD1AHN")
+endif()
+
+# Packed firmware name: SYRUP_<version>_BD1AHN.bin
+string(REGEX REPLACE "^[vV]" "" PACK_VERSION "${VERSION_STRING_2}")
+set(EXE_NAME "${PACK_PREFIX}_${PACK_VERSION}_${PACK_SUFFIX}")
 
 if(DEV)
-    if(NOT "${TARGET}" STREQUAL "f4hwn.fusion")
-        message(FATAL_ERROR "DEV is only supported for the Fusion target")
-    endif()
     set(DISPLAY_VERSION_STRING_2 "${VERSION_STRING_2} Dev")
 else()
     set(DISPLAY_VERSION_STRING_2 "${VERSION_STRING_2}")
@@ -128,8 +133,8 @@ if(DEV)
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${CMAKE_CURRENT_BINARY_DIR}/${EXE_NAME}.bin"
-                "${CMAKE_SOURCE_DIR}/archive/f4hwn.fusion.development.bin"
-        COMMENT "Preparing archive/f4hwn.fusion.development.bin"
+                "${CMAKE_SOURCE_DIR}/archive/syrup.development.bin"
+        COMMENT "Preparing archive/syrup.development.bin"
     )
 endif()
 

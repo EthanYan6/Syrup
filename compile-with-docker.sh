@@ -5,16 +5,15 @@ set -euo pipefail
 # Usage:
 #   ./compile-with-docker.sh [Preset] [CMake options...]
 # Examples:
-#   ./compile-with-docker.sh Custom
-#   ./compile-with-docker.sh Bandscope -DENABLE_SPECTRUM=ON
-#   ./compile-with-docker.sh Broadcast -DENABLE_FEAT_F4HWN_GAME=ON -DENABLE_NOAA=ON
-#   ./compile-with-docker.sh Fusion -DDEV=ON
-#   ./compile-with-docker.sh All
-# Default preset: "Custom"
+#   ./compile-with-docker.sh
+#   ./compile-with-docker.sh syrup
+#   ./compile-with-docker.sh syrup -DDEV=ON
+# Default preset: "syrup"
+# Packed output: build/syrup/SYRUP_<version>_BD1AHN.bin
 # ---------------------------------------------
 
 IMAGE=uvk1-uvk5v3
-PRESET=${1:-Custom}
+PRESET=${1:-syrup}
 shift || true  # remove preset from arguments if present
 
 # Any remaining args will be treated as CMake cache variables
@@ -23,9 +22,9 @@ EXTRA_ARGS=("$@")
 # ---------------------------------------------
 # Validate preset name
 # ---------------------------------------------
-if [[ ! "$PRESET" =~ ^(Custom|Bandscope|Broadcast|Basic|RescueOps|Game|Fusion|All)$ ]]; then
+if [[ ! "$PRESET" =~ ^(syrup)$ ]]; then
   echo "❌ Unknown preset: '$PRESET'"
-  echo "Valid presets are: Custom, Bandscope, Broadcast, Basic, RescueOps, Game, Fusion, All"
+  echo "Valid presets are: syrup"
   exit 1
 fi
 
@@ -60,16 +59,4 @@ build_preset() {
   echo "✅ Done: ${preset}"
 }
 
-# ---------------------------------------------
-# Handle 'All' preset
-# ---------------------------------------------
-if [[ "$PRESET" == "All" ]]; then
-  PRESETS=(Bandscope Broadcast Basic RescueOps Game Fusion)
-  for p in "${PRESETS[@]}"; do
-    build_preset "$p"
-  done
-  echo ""
-  echo "🎉 All presets built successfully!"
-else
-  build_preset "$PRESET"
-fi
+build_preset "$PRESET"
