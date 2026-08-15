@@ -53,6 +53,7 @@ void UI_DisplayAudioScope(void);
 #endif
 void UI_MAIN_TimeSlice500ms(void);
 void UI_DisplayMain(void);
+void UI_SyrupHome_Tick10ms(void);
 
 #ifdef ENABLE_FEAT_F4HWN_SCAN_PROGRESS
 void UI_MAIN_NotifyScanProgressDataChanged(void);

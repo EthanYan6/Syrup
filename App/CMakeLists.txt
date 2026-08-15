@@ -45,6 +45,7 @@ target_sources(App INTERFACE
     ui/menu.c
     ui/scanner.c
     ui/status.c
+    ui/syrup_home.c
     ui/ui.c
     ui/welcome.c
     "version.c"

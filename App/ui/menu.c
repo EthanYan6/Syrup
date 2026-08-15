@@ -91,7 +91,9 @@ const t_menu_item MenuList[] =
     {"BatSav",      MENU_SAVE          }, // was "SAVE"
     {"BatTxt",      MENU_BAT_TXT       },
     {"Mic",         MENU_MIC           },
+#ifdef ENABLE_AUDIO_BAR
     {"MicBar",      MENU_MIC_BAR       },
+#endif
     {"ChDisp",      MENU_MDF           }, // was "MDF"
     {"POnMsg",      MENU_PONMSG        },
     {"BLTime",      MENU_ABR           }, // was "ABR"
@@ -624,7 +626,11 @@ static const uint8_t CatPower[]   = {
 static const uint8_t CatDisplay[] = { MENU_MDF, MENU_PONMSG, MENU_ABR, MENU_ABR_MIN, MENU_ABR_MAX, MENU_ABR_ON_TX_RX, MENU_SET_CTR, MENU_SET_INV, MENU_SET_MET, MENU_SET_GUI, MENU_VOL };
 static const uint8_t CatTimers[]  = { MENU_TOT, MENU_SET_TOT, MENU_SET_EOT, MENU_SET_TMR };
 static const uint8_t CatAudio[]   = {
-    MENU_MIC, MENU_MIC_BAR, MENU_BEEP,
+    MENU_MIC,
+#ifdef ENABLE_AUDIO_BAR
+    MENU_MIC_BAR,
+#endif
+    MENU_BEEP,
 #ifdef ENABLE_FEAT_F4HWN_VOL
     MENU_SET_VOL,
 #endif
