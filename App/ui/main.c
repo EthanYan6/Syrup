@@ -735,12 +735,7 @@ void UI_DisplayMain(void)
 {
 	center_line = CENTER_LINE_IN_USE;
 
-	if (gLowBattery && !gLowBatteryConfirmed) {
-		UI_DisplayClear();
-		UI_DisplayPopup("LOW BATTERY");
-		ST7565_BlitFullScreen();
-		return;
-	}
+	/* LOW BATTERY / keypad-lock hints are drawn in the home wave row */
 
 #ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
 	if (gActionPickerKey != 0) {
@@ -763,5 +758,6 @@ void UI_DisplayMain(void)
 #endif
 
 	UI_DisplaySyrupHome();
+	ST7565_BlitStatusLine();
 	ST7565_BlitFullScreen();
 }

@@ -44,10 +44,20 @@
 #include "ui.h"
 #include "welcome.h"
 
+#ifdef ENABLE_CHINESE
+#include "menu_sub_values_cn.h"
+#define SUBV(en, cn) ((gUiLanguage == UI_LANGUAGE_CN) ? (const char *)(cn) : (const char *)(en))
+#else
+#define SUBV(en, cn) (en)
+#endif
+
 
 const t_menu_item MenuList[] =
 {
 //   text,          menu ID
+#ifdef ENABLE_CHINESE
+    {"Lang",        MENU_LANGUAGE      },
+#endif
     {"Step",        MENU_STEP          },
     {"Power",       MENU_TXP           }, // was "TXP"
     {"RxDCS",       MENU_R_DCS         }, // was "R_DCS"
@@ -363,6 +373,21 @@ const char* const gSubMenu_BAT_TXT[] =
     "PERCENT"
 };
 
+const char gSubMenu_LANGUAGE[][8] =
+{
+    "English",
+    "Chinese"
+};
+
+#ifdef ENABLE_CHINESE
+/* Popup only — list preview forces English via GetItemPreview */
+static const char gSubMenu_LANGUAGE_CN[][8] =
+{
+    "\xe8\x8b\xb1\xe8\xaf\xad", /* 英语 */
+    "\xe4\xb8\xad\xe6\x96\x87"  /* 中文 */
+};
+#endif
+
 const char* const gSubMenu_BATTYP[] =
 {
     "1600mAh K5",
@@ -620,7 +645,7 @@ static const uint8_t CatPower[]   = {
     MENU_SET_SAV,
 #endif
 };
-static const uint8_t CatDisplay[] = { MENU_PONMSG, MENU_ABR, MENU_ABR_MIN, MENU_ABR_MAX, MENU_ABR_ON_TX_RX, MENU_SET_CTR, MENU_SET_INV, MENU_VOL };
+static const uint8_t CatDisplay[] = { MENU_LANGUAGE, MENU_PONMSG, MENU_ABR, MENU_ABR_MIN, MENU_ABR_MAX, MENU_ABR_ON_TX_RX, MENU_SET_CTR, MENU_SET_INV, MENU_VOL };
 static const uint8_t CatTimers[]  = { MENU_TOT, MENU_SET_TOT, MENU_SET_EOT, MENU_SET_TMR };
 static const uint8_t CatAudio[]   = {
     MENU_MIC,
@@ -797,18 +822,20 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 		}
 		case MENU_TXP:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_TXP[0]);
+				strcpy(out, SUBV(gSubMenu_TXP[0], gSubMenu_TXP_CN[0]));
 			else
 #ifdef ENABLE_FEAT_F4HWN
-				sprintf(out, "%s\n%sW", gSubMenu_TXP[gSubMenuSelection], gSubMenu_SET_PWR[gSubMenuSelection - 1]);
+				sprintf(out, "%s\n%sW",
+					SUBV(gSubMenu_TXP[gSubMenuSelection], gSubMenu_TXP_CN[gSubMenuSelection]),
+					SUBV(gSubMenu_SET_PWR[gSubMenuSelection - 1], gSubMenu_SET_PWR_CN[gSubMenuSelection - 1]));
 #else
-				strcpy(out, gSubMenu_TXP[gSubMenuSelection]);
+				strcpy(out, SUBV(gSubMenu_TXP[gSubMenuSelection], gSubMenu_TXP_CN[gSubMenuSelection]));
 #endif
 			break;
 		case MENU_R_DCS:
 		case MENU_T_DCS:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else if (gSubMenuSelection < 105)
 				sprintf(out, "D%03oN", DCS_Options[gSubMenuSelection - 1]);
 			else
@@ -817,26 +844,31 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 		case MENU_R_CTCS:
 		case MENU_T_CTCS:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else
 				sprintf(out, "%u.%uHz", CTCSS_Options[gSubMenuSelection - 1] / 10, CTCSS_Options[gSubMenuSelection - 1] % 10);
 			break;
 		case MENU_SFT_D:
-			strcpy(out, gSubMenu_SFT_D[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SFT_D[gSubMenuSelection], gSubMenu_SFT_D_CN[gSubMenuSelection]));
 			break;
 		case MENU_OFFSET:
 			sprintf(out, "%d.%05u", (int)(gSubMenuSelection / 100000), (unsigned)(abs(gSubMenuSelection) % 100000));
 			break;
 		case MENU_W_N:
-			strcpy(out, gSubMenu_W_N[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_W_N[gSubMenuSelection], gSubMenu_W_N_CN[gSubMenuSelection]));
 			break;
 		case MENU_AM:
-			strcpy(out, gModulationStr[gSubMenuSelection]);
+			strcpy(out, SUBV(gModulationStr[gSubMenuSelection], gSubMenu_MODULATION_CN[gSubMenuSelection]));
 			break;
 		case MENU_MEM_NAME:
 			SETTINGS_FetchChannelName(out, (uint16_t)gSubMenuSelection);
 			if (out[0] == '\0')
 				strcpy(out, "--");
+#ifdef ENABLE_CHINESE
+			else if (SETTINGS_ChannelNameHasCjkUtf8(out))
+				/* List 3x5 cannot draw Hanzi — same as ChSave/ChDele: show channel number */
+				UI_GenerateChannelStringEx(out, true, (uint16_t)gSubMenuSelection);
+#endif
 			break;
 		case MENU_MEM_CH:
 		case MENU_DEL_CH:
@@ -844,7 +876,7 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 		case MENU_S_PRI_CH_1:
 		case MENU_S_PRI_CH_2:
 			if (gSubMenuSelection == MR_CHANNELS_MAX)
-				strcpy(out, "None");
+				strcpy(out, SUBV("None", gSubMenu_MEM_NONE_CN));
 			else
 				UI_GenerateChannelStringEx(out, true, (uint16_t)gSubMenuSelection);
 			break;
@@ -876,34 +908,34 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 		case MENU_SET_INV:
 #endif
 #endif
-			strcpy(out, gSubMenu_OFF_ON[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_OFF_ON[gSubMenuSelection], gSubMenu_OFF_ON_CN[gSubMenuSelection]));
 			break;
 		case MENU_MIC_BAR:
 #ifdef ENABLE_AUDIO_BAR
-			strcpy(out, gSubMenu_OFF_ON[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_OFF_ON[gSubMenuSelection], gSubMenu_OFF_ON_CN[gSubMenuSelection]));
 #else
 			strcpy(out, gSubMenu_NA);
 #endif
 			break;
 		case MENU_SAVE:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else
 				sprintf(out, "1:%u", (unsigned)gSubMenuSelection);
 			break;
 		case MENU_TDR:
-			strcpy(out, gSubMenu_RXMode[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_RXMode[gSubMenuSelection], gSubMenu_RXMode_CN[gSubMenuSelection]));
 			break;
 		case MENU_TOT:
 			sprintf(out, "%02dm:%02ds", (int)((((gSubMenuSelection + 1) * 5) / 60)), (int)((((gSubMenuSelection + 1) * 5) % 60)));
 			break;
 		case MENU_ABR:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else if (gSubMenuSelection < 61)
 				sprintf(out, "%02dm:%02ds", (int)((gSubMenuSelection * 5) / 60), (int)((gSubMenuSelection * 5) % 60));
 			else
-				strcpy(out, "ON");
+				strcpy(out, SUBV("ON", gSubMenu_ABR_ON_CN));
 			break;
 		case MENU_ABR_MIN:
 		case MENU_ABR_MAX:
@@ -913,28 +945,28 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 			sprintf(out, "%d", (int)gSubMenuSelection);
 			break;
 		case MENU_BAT_TXT:
-			strcpy(out, gSubMenu_BAT_TXT[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_BAT_TXT[gSubMenuSelection], gSubMenu_BAT_TXT_CN[gSubMenuSelection]));
 			break;
 		case MENU_PONMSG:
-			strcpy(out, gSubMenu_PONMSG[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_PONMSG[gSubMenuSelection], gSubMenu_PONMSG_CN[gSubMenuSelection]));
 			break;
 		case MENU_ROGER:
-			strcpy(out, gSubMenu_ROGER[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_ROGER[gSubMenuSelection], gSubMenu_ROGER_CN[gSubMenuSelection]));
 			break;
 		case MENU_PTT_ID:
-			strcpy(out, gSubMenu_PTT_ID[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_PTT_ID[gSubMenuSelection], gSubMenu_PTT_ID_CN[gSubMenuSelection]));
 			break;
 		case MENU_MDF:
-			strcpy(out, gSubMenu_MDF[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_MDF[gSubMenuSelection], gSubMenu_MDF_CN[gSubMenuSelection]));
 			break;
 #ifdef ENABLE_VOICE
 		case MENU_VOICE:
-			strcpy(out, gSubMenu_VOICE[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_VOICE[gSubMenuSelection], gSubMenu_VOICE_CN[gSubMenuSelection]));
 			break;
 #endif
 #ifdef ENABLE_ALARM
 		case MENU_AL_MOD:
-			strcpy(out, gSubMenu_AL_MOD[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_AL_MOD[gSubMenuSelection], gSubMenu_AL_MOD_CN[gSubMenuSelection]));
 			break;
 #endif
 		case MENU_F_LOCK:
@@ -945,30 +977,34 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 #endif
 				strcpy(out, "READ\nMANUAL");
 			else
-				strcpy(out, gSubMenu_F_LOCK[gSubMenuSelection]);
+				strcpy(out, SUBV(gSubMenu_F_LOCK[gSubMenuSelection], gSubMenu_F_LOCK_CN[gSubMenuSelection]));
 			break;
 		case MENU_RESET:
-			strcpy(out, gSubMenu_RESET[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_RESET[gSubMenuSelection], gSubMenu_RESET_CN[gSubMenuSelection]));
 			break;
 		case MENU_BATTYP:
 			strcpy(out, gSubMenu_BATTYP[gSubMenuSelection]);
 			break;
 		case MENU_SET_NAV:
-			strcpy(out, gSubMenu_SET_NAV[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_NAV[gSubMenuSelection], gSubMenu_SET_NAV_CN[gSubMenuSelection]));
+			break;
+		case MENU_LANGUAGE:
+			strcpy(out, SUBV(gSubMenu_LANGUAGE[gSubMenuSelection],
+				gSubMenu_LANGUAGE_CN[gSubMenuSelection]));
 			break;
 		case MENU_F1SHRT:
 		case MENU_F1LONG:
 		case MENU_F2SHRT:
 		case MENU_F2LONG:
 		case MENU_MLONG:
-			strcpy(out, gSubMenu_SIDEFUNCTIONS[gSubMenuSelection].name);
+			strcpy(out, SUBV(gSubMenu_SIDEFUNCTIONS[gSubMenuSelection].name, gSubMenu_SIDEFUNCTIONS_CN[gSubMenuSelection]));
 			break;
 		case MENU_LIST_CH:
 		case MENU_S_LIST:
 			if (gSubMenuSelection == MR_CHANNELS_LIST + 1)
-				strcpy(out, "ALL");
+				strcpy(out, SUBV("ALL", gSubMenu_LIST_CN_ALL));
 			else if (gSubMenuSelection == 0 && m == MENU_LIST_CH)
-				strcpy(out, "OFF");
+				strcpy(out, SUBV("OFF", gSubMenu_LIST_CN_OFF));
 			else {
 				const char *name = gListName[gSubMenuSelection - 1];
 				if (IsEmptyName(name, sizeof(gListName[0])))
@@ -980,7 +1016,7 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 		case MENU_VOX:
 #ifdef ENABLE_VOX
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else
 				sprintf(out, "%u", (unsigned)gSubMenuSelection);
 #else
@@ -989,11 +1025,11 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 			break;
 		case MENU_COMPAND:
 		case MENU_ABR_ON_TX_RX:
-			strcpy(out, gSubMenu_RX_TX[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_RX_TX[gSubMenuSelection], gSubMenu_RX_TX_CN[gSubMenuSelection]));
 			break;
 		case MENU_SC_REV:
 			if (gSubMenuSelection == 0)
-				strcpy(out, "STOP");
+				strcpy(out, SUBV("STOP", gSubMenu_SC_REV_STOP_CN));
 			else if (gSubMenuSelection < 81)
 				sprintf(out, "CARRIER\n%02ds:%03dms", (int)((gSubMenuSelection * 250) / 1000), (int)((gSubMenuSelection * 250) % 1000));
 			else
@@ -1001,7 +1037,7 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 			break;
 		case MENU_AUTOLK:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else
 				sprintf(out, "%02dm:%02ds", (int)((gSubMenuSelection * 15) / 60), (int)((gSubMenuSelection * 15) % 60));
 			break;
@@ -1010,7 +1046,7 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 			strcpy(out, gEeprom.ANI_DTMF_ID);
 			break;
 		case MENU_D_RSP:
-			strcpy(out, gSubMenu_D_RSP[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_D_RSP[gSubMenuSelection], gSubMenu_D_RSP_CN[gSubMenuSelection]));
 			break;
 		case MENU_D_HOLD:
 			sprintf(out, "%ds", (int)gSubMenuSelection);
@@ -1027,7 +1063,7 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 			break;
 		case MENU_RP_STE:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else
 				sprintf(out, "%u*100ms", (unsigned)gSubMenuSelection);
 			break;
@@ -1038,37 +1074,39 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 		}
 #ifndef ENABLE_FEAT_F4HWN
 		case MENU_SCR:
-			strcpy(out, gSubMenu_SCRAMBLER[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SCRAMBLER[gSubMenuSelection], gSubMenu_SCRAMBLER_CN[gSubMenuSelection]));
 			break;
 #endif
 #if defined(ENABLE_FEAT_F4HWN) && defined(ENABLE_FEAT_F4HWN_LOGO_SAV)
 		case MENU_SET_SAV:
-			strcpy(out, gSubMenu_SET_SAV[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_SAV[gSubMenuSelection], gSubMenu_SET_SAV_CN[gSubMenuSelection]));
 			break;
 #endif
 #ifdef ENABLE_FEAT_F4HWN
 		case MENU_SET_PWR:
-			sprintf(out, "%s\n%sW", gSubMenu_TXP[gSubMenuSelection + 1], gSubMenu_SET_PWR[gSubMenuSelection]);
+			sprintf(out, "%s\n%sW",
+				SUBV(gSubMenu_TXP[gSubMenuSelection + 1], gSubMenu_TXP_CN[gSubMenuSelection + 1]),
+				SUBV(gSubMenu_SET_PWR[gSubMenuSelection], gSubMenu_SET_PWR_CN[gSubMenuSelection]));
 			break;
 		case MENU_SET_PTT:
-			strcpy(out, gSubMenu_SET_PTT[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_PTT[gSubMenuSelection], gSubMenu_SET_PTT_CN[gSubMenuSelection]));
 			break;
 		case MENU_SET_TOT:
 		case MENU_SET_EOT:
-			strcpy(out, gSubMenu_SET_TOT[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_TOT[gSubMenuSelection], gSubMenu_SET_TOT_CN[gSubMenuSelection]));
 			break;
 		case MENU_SET_LCK:
-			strcpy(out, gSubMenu_SET_LCK[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_LCK[gSubMenuSelection], gSubMenu_SET_LCK_CN[gSubMenuSelection]));
 			break;
 		case MENU_SET_MET:
 		case MENU_SET_GUI:
-			strcpy(out, gSubMenu_SET_MET[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_MET[gSubMenuSelection], gSubMenu_SET_MET_CN[gSubMenuSelection]));
 			break;
 		case MENU_TX_LOCK:
 			if (TX_freq_check(gEeprom.VfoInfo[gEeprom.TX_VFO].pTX->Frequency) == 0)
-				strcpy(out, "Inside\nF Lock\nPlan");
+				strcpy(out, SUBV("Inside\nF Lock\nPlan", gSubMenu_TX_LOCK_INSIDE_CN));
 			else
-				strcpy(out, gSubMenu_OFF_ON[gSubMenuSelection]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[gSubMenuSelection], gSubMenu_OFF_ON_CN[gSubMenuSelection]));
 			break;
 		case MENU_VOL:
 			/* Liste : apercu fixe "Syrup" ; le popup garde les pages SysInf. */
@@ -1077,30 +1115,30 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 #ifdef ENABLE_FEAT_F4HWN_SLEEP
 		case MENU_SET_OFF:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else if (gSubMenuSelection < 121)
 				sprintf(out, "%dh:%02dm", (int)(gSubMenuSelection / 60), (int)(gSubMenuSelection % 60));
 			break;
 #endif
 #ifdef ENABLE_FEAT_F4HWN_SCAN_FASTER
 		case MENU_SET_SCN:
-			strcpy(out, gSubMenu_SET_SCN[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_SCN[gSubMenuSelection], gSubMenu_SET_SCN_CN[gSubMenuSelection]));
 			break;
 #endif
 #ifdef ENABLE_FEAT_F4HWN_NARROWER
 		case MENU_SET_NFM:
-			strcpy(out, gSubMenu_SET_NFM[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_NFM[gSubMenuSelection], gSubMenu_SET_NFM_CN[gSubMenuSelection]));
 			break;
 #endif
 #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
 		case MENU_SET_KEY:
-			strcpy(out, gSubMenu_SET_KEY[gSubMenuSelection]);
+			strcpy(out, SUBV(gSubMenu_SET_KEY[gSubMenuSelection], gSubMenu_SET_KEY_CN[gSubMenuSelection]));
 			break;
 #endif
 #ifdef ENABLE_FEAT_F4HWN_VOL
 		case MENU_SET_VOL:
 			if (gSubMenuSelection == 0)
-				strcpy(out, gSubMenu_OFF_ON[0]);
+				strcpy(out, SUBV(gSubMenu_OFF_ON[0], gSubMenu_OFF_ON_CN[0]));
 			else if (gSubMenuSelection < 64)
 				sprintf(out, "%02u", (unsigned)gSubMenuSelection);
 			break;
@@ -1121,6 +1159,9 @@ static void UI_MENU_GetItemPreview(uint8_t view_pos, char *out, uint8_t out_len)
 	const int32_t saved_sel    = gSubMenuSelection;
 	char          tmp[64];
 	int           m;
+#ifdef ENABLE_CHINESE
+	const uint8_t saved_lang = gUiLanguage;
+#endif
 
 	out[0] = '\0';
 	if (view_pos >= gMenuListCount || out_len == 0)
@@ -1129,8 +1170,15 @@ static void UI_MENU_GetItemPreview(uint8_t view_pos, char *out, uint8_t out_len)
 	gMenuCursor = view_pos;
 	MENU_ShowCurrentSetting();
 	m = UI_MENU_GetCurrentMenuId();
+#ifdef ENABLE_CHINESE
+	/* List right column: always English 3x5; Chinese only in submenu popup */
+	gUiLanguage = UI_LANGUAGE_EN;
+#endif
 	UI_MENU_FormatValue(m, tmp, sizeof(tmp));
 	UI_MENU_FirstLine(out, tmp, out_len);
+#ifdef ENABLE_CHINESE
+	gUiLanguage = saved_lang;
+#endif
 
 	gMenuCursor       = saved_cursor;
 	gSubMenuSelection = saved_sel;
@@ -1146,6 +1194,7 @@ static void UI_MENU_PrintValue(const char *str, unsigned x1, unsigned x2, uint8_
 #endif
 }
 
+#ifndef ENABLE_CHINESE
 static void UI_MENU_DrawEditCaret(uint8_t x0, uint8_t pitch, uint8_t bar_w, int16_t uy, int16_t cy)
 {
 	uint8_t x = x0;
@@ -1161,6 +1210,7 @@ static void UI_MENU_DrawEditCaret(uint8_t x0, uint8_t pitch, uint8_t bar_w, int1
 		x = (uint8_t)(x + pitch);
 	}
 }
+#endif
 
 static uint8_t UI_MENU_SmallTextWidth(const char *text)
 {
@@ -1180,12 +1230,40 @@ static void UI_MENU_DrawSmallCenteredAtY(const char *text, uint8_t y_top)
 	if (text == NULL || text[0] == '\0')
 		return;
 
+#ifdef ENABLE_CHINESE
+	/* UTF-8 channel names / CN labels: 12px band */
+	{
+		const char *p = text;
+		while (*p) {
+			if ((uint8_t)*p >= 0xE4u) {
+				UI_PrintStringSmallChannelNameBand(text, 0, LCD_WIDTH - 1, y_top);
+				return;
+			}
+			p++;
+		}
+	}
+#endif
+
 	tw = UI_MENU_SmallTextWidth(text);
 	tx = (LCD_WIDTH > tw) ? (uint8_t)((LCD_WIDTH - tw) / 2u) : 0u;
 	UI_MENU_DrawSmallAtY(text, tx, y_top);
 }
 
-/* Empile des lignes small centrees : ecart fixe gap_px, bloc centre dans [area_y0, area_y1). */
+/* ASCII small = 8px; CJK channel names / CN labels use 12px band. */
+static uint8_t UI_MENU_StackedLineHeight(const char *text)
+{
+#ifdef ENABLE_CHINESE
+	if (text != NULL && SETTINGS_ChannelNameHasCjkUtf8(text))
+		return 12u;
+#else
+	(void)text;
+#endif
+	return 8u;
+}
+
+/* Empile des lignes small centrees : ecart fixe gap_px, bloc centre dans [area_y0, area_y1).
+ * Line pitch follows each line's real height so a 12px CJK name does not overlap the next row. */
+#ifndef ENABLE_CHINESE
 static uint8_t UI_MENU_StackedLineY(uint8_t index, uint8_t count, uint8_t area_y0, uint8_t area_y1, uint8_t gap_px)
 {
 	const uint8_t line_h = 8u;
@@ -1201,6 +1279,7 @@ static uint8_t UI_MENU_StackedLineY(uint8_t index, uint8_t count, uint8_t area_y
 	y0 = (block_h <= area_h) ? (uint8_t)(area_y0 + (area_h - block_h) / 2u) : area_y0;
 	return (uint8_t)(y0 + (uint8_t)(index * (line_h + gap_px)));
 }
+#endif
 
 static void UI_MENU_DrawStackedSmall(
 	const char *const *texts,
@@ -1209,13 +1288,32 @@ static void UI_MENU_DrawStackedSmall(
 	uint8_t area_y1,
 	uint8_t gap_px)
 {
+	uint8_t heights[3];
 	uint8_t i;
+	uint8_t block_h;
+	uint8_t area_h;
+	uint8_t y;
 
 	if (count == 0 || area_y1 <= area_y0)
 		return;
+	if (count > 3u)
+		count = 3u;
 
-	for (i = 0; i < count; i++)
-		UI_MENU_DrawSmallCenteredAtY(texts[i], UI_MENU_StackedLineY(i, count, area_y0, area_y1, gap_px));
+	block_h = 0u;
+	for (i = 0; i < count; i++) {
+		heights[i] = UI_MENU_StackedLineHeight(texts[i]);
+		block_h = (uint8_t)(block_h + heights[i]);
+		if (i > 0u)
+			block_h = (uint8_t)(block_h + gap_px);
+	}
+
+	area_h = (uint8_t)(area_y1 - area_y0);
+	y = (block_h <= area_h) ? (uint8_t)(area_y0 + (area_h - block_h) / 2u) : area_y0;
+
+	for (i = 0; i < count; i++) {
+		UI_MENU_DrawSmallCenteredAtY(texts[i], y);
+		y = (uint8_t)(y + heights[i] + gap_px);
+	}
 }
 
 /* 2 / 3 lignes, ecart 2px, centre vertical (SysInf, ChName, ChSave, ...). */
@@ -1236,24 +1334,48 @@ static void UI_MENU_DrawLines2(const char *a, const char *b, uint8_t area_y0, ui
 	UI_MENU_DrawStackedSmall(lines, 2, area_y0, area_y1, 2u);
 }
 
-// Liste : index (3x5 centre vertical), nom, valeur 3x5 a droite centre vertical.
+// Liste : index (3x5 centre vertical), nom, valeur a droite.
 static void UI_MENU_DrawNumberedMenuList(const int count, const int cursor)
 {
 	char          num[4];
 	char          val[24];
+#ifdef ENABLE_CHINESE
+	/* CN titles are 12px; use taller rows so glyphs do not overlap.
+	 * Title "菜单" spans y0..11 — shift divider + list down 5px so they are not clipped. */
+	const bool    cn_list   = (gUiLanguage == UI_LANGUAGE_CN);
+	const uint8_t cn_shift  = cn_list ? 5u : 0u;
+	const uint8_t list_y0   = (uint8_t)((16u - 3u) + cn_shift);
+	const uint8_t row_pitch = cn_list ? 13u : (uint8_t)(8u + 1u);
+	const uint8_t row_h     = cn_list ? 12u : 8u;
+	const int     visible   = cn_list ? 3 : 5;
+	const uint8_t div_y     = (uint8_t)(8u + 2u + cn_shift);
+#else
 	const uint8_t list_y0   = 16u - 3u;
 	const uint8_t row_pitch = 8u + 1u;
 	const uint8_t row_h     = 8u;
-	const uint8_t name_x    = 14u;
 	const int     visible   = 5;
+	const uint8_t div_y     = 8u + 2u;
+#endif
 	int           top;
 	int           i;
 
-	UI_PrintStringSmallBold("MENU", 0, 0, 0);
+#ifdef ENABLE_CHINESE
+	if (cn_list)
+		/* "菜单" — left aligned, ↓2px so it sits clearer under status */
+		UI_PrintStringSmallAtPixel("\xe8\x8f\x9c\xe5\x8d\x95", 0, 0, 2u, 13u, 0u);
+	else
+#endif
+		UI_PrintStringSmallBold("MENU", 0, 0, 0);
 
-	for (uint8_t x = 0; x < LCD_WIDTH; x++)
-		gFrameBuffer[1][x] = 0;
-	UI_DrawLineBuffer(gFrameBuffer, 0, 8 + 2, LCD_WIDTH - 1, 8 + 2, 1);
+#ifdef ENABLE_CHINESE
+	if (!cn_list)
+#endif
+	{
+		/* EN only: clear fb line 1 under ASCII "MENU". CN must keep line 1 (title y8..11). */
+		for (uint8_t x = 0; x < LCD_WIDTH; x++)
+			gFrameBuffer[1][x] = 0;
+	}
+	UI_DrawLineBuffer(gFrameBuffer, 0, div_y, LCD_WIDTH - 1, div_y, 1);
 
 	if (count <= 0)
 		return;
@@ -1271,24 +1393,40 @@ static void UI_MENU_DrawNumberedMenuList(const int count, const int cursor)
 		uint8_t       vw;
 		uint8_t       vx;
 		uint8_t       name_max_w;
+		uint8_t       name_x;
 
 		if (idx >= count)
 			break;
 
 		sprintf(num, "%u", (unsigned)(idx + 1));
-		/* 3x5 = 6px de haut, centre dans la rangee 8px */
+		/* 3x5 @ x=1, pitch 4px; title 1px after last digit column */
 		GUI_DisplaySmallest(num, 1, (uint8_t)(y + 1u), false, true);
+		name_x = (uint8_t)(1u + (uint8_t)strlen(num) * 4u + 1u);
 
-		UI_MENU_DrawSmallAtY(MenuList[gMenuIndices[idx]].name, name_x, y);
+		{
+			const t_menu_item *item = &MenuList[gMenuIndices[idx]];
+			const char *title = UI_MENU_GetMenuTitle(item);
+#ifdef ENABLE_CHINESE
+			if (cn_list) {
+				/* x_end==x_start → left align (AtPixel centers when end>start) */
+				UI_PrintStringSmallAtPixel(title, name_x, name_x, y, (uint8_t)(y + 11u), 0u);
+				name_max_w = (uint8_t)(name_x + UI_SmallStringPixelWidth(title) + 2u);
+			} else
+#endif
+			{
+				UI_MENU_DrawSmallAtY(title, name_x, y);
+				name_max_w = (uint8_t)(name_x + UI_MENU_SmallTextWidth(title) + 2u);
+			}
+		}
 
 		UI_MENU_GetItemPreview((uint8_t)idx, val, sizeof(val));
+		/* Right column: English 3x5 only (preview already forced EN) */
 		vw = UI_MENU_SmallestTextWidth(val);
 		if (vw >= LCD_WIDTH)
 			vx = 0;
 		else
 			vx = (uint8_t)(LCD_WIDTH - vw);
 
-		name_max_w = (uint8_t)(name_x + UI_MENU_SmallTextWidth(MenuList[gMenuIndices[idx]].name) + 2u);
 		if (vx < name_max_w)
 		{
 			while (val[0] != '\0' && (uint8_t)(LCD_WIDTH - UI_MENU_SmallestTextWidth(val)) < name_max_w)
@@ -1354,7 +1492,289 @@ int32_t gSubMenuSelection;
 char    edit_original[17]; // a copy of the text before editing so that we can easily test for changes/difference
 char    edit[17];
 int     edit_index;
+#ifndef ENABLE_CHINESE
 bool    edit_is_uppercase = false;
+#endif
+
+#ifdef ENABLE_CHINESE
+/* Symbol mode: fixed 6-slot strip with numbers 1–6 + symbols */
+static void UI_MENU_DrawMemNameSymbolSixPack(unsigned int x1, unsigned int x2, uint8_t y_top, uint8_t y_bot)
+{
+    static const uint8_t slot_total = 6u;
+    const uint8_t n = gMemNameCandidateCount;
+    uint8_t slot_index;
+
+    if (n == 0u || x2 <= x1)
+        return;
+
+    {
+        const unsigned int avail = (unsigned int)((x2 - x1) + 1u);
+        const unsigned int w_num = 6u;
+        const unsigned int w_sym = 6u;
+        const unsigned int gap_num_sym = 4u;
+
+        for (slot_index = 0; slot_index < slot_total; slot_index++)
+        {
+            char num_str[2];
+            char sym_str[2];
+            unsigned int slot_l;
+            unsigned int slot_r;
+            unsigned int slot_w;
+            unsigned int token_w;
+            unsigned int token_x;
+            unsigned int sym_x;
+
+            slot_l = x1 + (avail * (unsigned int)slot_index) / (unsigned int)slot_total;
+            slot_r = x1 + (avail * ((unsigned int)slot_index + 1u)) / (unsigned int)slot_total - 1u;
+
+            if (slot_r >= slot_l)
+                slot_w = slot_r - slot_l + 1u;
+            else
+                slot_w = 0u;
+
+            token_w = w_num + gap_num_sym + w_sym;
+            token_x = slot_l;
+            if (slot_w > token_w)
+                token_x = slot_l + (slot_w - token_w) / 2u;
+
+            num_str[0] = (char)('1' + slot_index);
+            num_str[1] = 0;
+            UI_PrintStringSmallAtPixel(num_str, token_x, token_x, y_top, y_bot, 0u);
+
+            sym_x = token_x + w_num + gap_num_sym;
+
+            if (slot_index < n)
+            {
+                sym_str[0] = gMemNameCandidates[slot_index];
+                sym_str[1] = 0;
+            }
+            else
+            {
+                sym_str[0] = ' ';
+                sym_str[1] = 0;
+            }
+            UI_PrintStringSmallAtPixel(sym_str, sym_x, sym_x, y_top, y_bot, 0u);
+        }
+    }
+}
+
+static void UI_MENU_DrawMemNameEdit(unsigned int sub_val_x1, unsigned int sub_val_x2)
+{
+    /*
+     * Layout (title already at y~0..11):
+     *   mode        y_mode .. +7
+     *   name glyphs y_name .. name_bot (12px CJK band)
+     *   underline   ul_y = just below glyphs (not through them)
+     *   candidates  y_strip .. strip_bot (same Y for selected/unselected)
+     */
+    const uint8_t y_mode    = 13u;
+    const uint8_t y_name    = 20u;
+    const uint8_t name_bot  = (uint8_t)(y_name + 11u);
+    const uint8_t ul_y      = (uint8_t)(name_bot + 1u);
+    const uint8_t y_strip   = (uint8_t)(ul_y + 4u);
+    const uint8_t strip_bot = (uint8_t)(y_strip + 11u);
+    const size_t max_b = (size_t)CHANNEL_NAME_MAX_BYTES;
+
+    switch (gMemNameInputMode)
+    {
+        case MEM_NAME_INPUT_DIGIT:
+            UI_PrintStringSmallAtPixel("1", (uint8_t)(sub_val_x2 - 6), (uint8_t)sub_val_x2, y_mode, (uint8_t)(y_mode + 7u), 0u);
+            break;
+        case MEM_NAME_INPUT_LOWER:
+            UI_PrintStringSmallAtPixel("a", (uint8_t)(sub_val_x2 - 6), (uint8_t)sub_val_x2, y_mode, (uint8_t)(y_mode + 7u), 0u);
+            break;
+        case MEM_NAME_INPUT_UPPER:
+            UI_PrintStringSmallAtPixel("A", (uint8_t)(sub_val_x2 - 6), (uint8_t)sub_val_x2, y_mode, (uint8_t)(y_mode + 7u), 0u);
+            break;
+        case MEM_NAME_INPUT_SYMBOL:
+            UI_PrintStringSmallAtPixel(",", (uint8_t)(sub_val_x2 - 6), (uint8_t)sub_val_x2, y_mode, (uint8_t)(y_mode + 7u), 0u);
+            break;
+        default:
+            UI_PrintStringSmallAtPixel("PY", (uint8_t)(sub_val_x2 - 12), (uint8_t)sub_val_x2, y_mode, (uint8_t)(y_mode + 7u), 0u);
+            break;
+    }
+
+    {
+        const uint8_t eng_cw = 6;
+        const uint8_t chn_cw = 12;
+        const uint8_t ul_spacing = 1;
+        uint8_t x = (uint8_t)sub_val_x1;
+        size_t bi = 0;
+        uint8_t slot_x[16];
+        uint8_t slot_w[16];
+        uint8_t slot_count = 0;
+        int8_t cursor_slot = -1;
+
+        while (bi < max_b && x < sub_val_x2 && slot_count < 15)
+        {
+            slot_x[slot_count] = x;
+            if ((uint8_t)edit[bi] >= 0xE4 && (uint8_t)edit[bi] <= 0xEF)
+            {
+                char ch[4] = { edit[bi], edit[bi + 1], edit[bi + 2], 0 };
+                UI_PrintStringSmallAtPixel(ch, x, x, y_name, name_bot, 0u);
+                slot_w[slot_count] = chn_cw;
+                if (edit_index >= 0 && (size_t)edit_index == bi)
+                    cursor_slot = (int8_t)slot_count;
+                x += chn_cw + ul_spacing;
+                bi += 3;
+            }
+            else if (edit[bi] == MEM_NAME_EDIT_PAD || edit[bi] == 0)
+            {
+                slot_w[slot_count] = eng_cw;
+                if (edit_index >= 0 && (size_t)edit_index == bi)
+                    cursor_slot = (int8_t)slot_count;
+                x += eng_cw + ul_spacing;
+                bi++;
+            }
+            else
+            {
+                char ch[2] = { edit[bi], 0 };
+                UI_PrintStringSmallAtPixel(ch, x, x, y_name, name_bot, 0u);
+                slot_w[slot_count] = eng_cw;
+                if (edit_index >= 0 && (size_t)edit_index == bi)
+                    cursor_slot = (int8_t)slot_count;
+                x += eng_cw + ul_spacing;
+                bi++;
+            }
+            slot_count++;
+        }
+
+        while (bi < max_b && slot_count < 15 && x + eng_cw <= sub_val_x2)
+        {
+            slot_x[slot_count] = x;
+            slot_w[slot_count] = eng_cw;
+            if (edit_index >= 0 && (size_t)edit_index == bi)
+                cursor_slot = (int8_t)slot_count;
+            bi++;
+            x += eng_cw + ul_spacing;
+            slot_count++;
+        }
+
+        if (edit_index >= 0 && (size_t)edit_index == CHANNEL_NAME_MAX_BYTES && slot_count < 15 && x + eng_cw <= sub_val_x2)
+        {
+            slot_x[slot_count] = x;
+            slot_w[slot_count] = eng_cw;
+            cursor_slot = (int8_t)slot_count;
+            slot_count++;
+        }
+
+        if (slot_count > 0 && ul_y < (uint8_t)(FRAME_LINES * 8u))
+        {
+            const uint8_t ul_fb_row = (uint8_t)(ul_y / 8u);
+            const uint8_t ul_fb_bit = (uint8_t)(1u << (ul_y % 8u));
+            uint8_t s;
+
+            if (ul_fb_row < FRAME_LINES)
+            {
+                for (s = 0; s < slot_count; s++)
+                {
+                    uint8_t c;
+                    if (cursor_slot >= 0 && (int8_t)s == cursor_slot)
+                    {
+                        const uint8_t ul2 = (uint8_t)(ul_y + 1u);
+                        const uint8_t r2 = (uint8_t)(ul2 / 8u);
+                        const uint8_t b2 = (uint8_t)(1u << (ul2 % 8u));
+                        for (c = 0; c < slot_w[s]; c++)
+                        {
+                            gFrameBuffer[ul_fb_row][slot_x[s] + c] |= ul_fb_bit;
+                            if (r2 < FRAME_LINES)
+                                gFrameBuffer[r2][slot_x[s] + c] |= b2;
+                        }
+                    }
+                    else
+                    {
+                        for (c = 0; c < slot_w[s]; c++)
+                            gFrameBuffer[ul_fb_row][slot_x[s] + c] |= ul_fb_bit;
+                    }
+                }
+            }
+        }
+    }
+
+    if (gMemNameInputMode == MEM_NAME_INPUT_PINYIN && gPinyinDigitLen > 0)
+    {
+        char digits[7];
+        uint8_t i;
+        for (i = 0; i < gPinyinDigitLen && i < 6; i++)
+            digits[i] = gPinyinDigitSeq[i];
+        digits[i] = 0;
+        UI_PrintStringSmallAtPixel(digits, (uint8_t)(sub_val_x2 - 33), (uint8_t)(sub_val_x2 - 3), y_name, name_bot, 0u);
+    }
+
+    if (gAskForConfirmation == 0)
+    {
+        if (gMemNameInputMode == MEM_NAME_INPUT_PINYIN && gPinyinCandidateCount > 0)
+        {
+            uint8_t x = (uint8_t)sub_val_x1;
+            uint8_t i;
+
+            MENU_EnsurePinyinPageVisible();
+            for (i = gPinyinCandidateOffset; i < gPinyinCandidateCount; i++)
+            {
+                uint8_t py_w = (uint8_t)strlen(gPinyinCandidates[i]) * 6u;
+                if (x + py_w > sub_val_x2) break;
+
+                if (i == gPinyinCandidateIndex) {
+                    uint8_t inv_x1 = (x >= 2u) ? (uint8_t)(x - 2u) : 0u;
+                    uint8_t inv_x2 = (uint8_t)(x + py_w + 2u);
+                    UI_PrintStringSmallAtPixelCnInverse(gPinyinCandidates[i], inv_x1, inv_x2, y_strip, strip_bot);
+                } else
+                    UI_PrintStringSmallAtPixel(gPinyinCandidates[i], x, x, y_strip, strip_bot, 0u);
+                x += py_w + 6u;
+            }
+        }
+        else if (gCNCandidateCount > 0)
+        {
+            const unsigned strip_w = (unsigned)(sub_val_x2 - sub_val_x1);
+            const unsigned slot_w = strip_w / 6u;
+            uint8_t i;
+
+            for (i = 0; i < gCNCandidateCount; i++)
+            {
+                char num[2];
+                char utf8[4];
+                uint16_t unicode = gCNCandidates[i];
+                const uint8_t cx = (uint8_t)(sub_val_x1 + (unsigned)i * slot_w);
+
+                num[0] = (char)('1' + i);
+                num[1] = 0;
+                UI_PrintStringSmallAtPixel(num, cx, cx, y_strip, strip_bot, 0u);
+
+                utf8[0] = (char)(0xE0 | (unicode >> 12));
+                utf8[1] = (char)(0x80 | ((unicode >> 6) & 0x3F));
+                utf8[2] = (char)(0x80 | (unicode & 0x3F));
+                utf8[3] = 0;
+                UI_PrintStringSmallAtPixel(utf8, (uint8_t)(cx + 8u), (uint8_t)(cx + 8u), y_strip, strip_bot, 0u);
+            }
+        }
+        else if (gMemNameInputMode == MEM_NAME_INPUT_SYMBOL)
+        {
+            UI_MENU_DrawMemNameSymbolSixPack(sub_val_x1, sub_val_x2, y_strip, strip_bot);
+        }
+        else if (gMemNameCandidateCount > 0)
+        {
+            const unsigned strip_w = (unsigned)(sub_val_x2 - sub_val_x1);
+            const unsigned slot_w = strip_w / 4u;
+            uint8_t i;
+
+            for (i = 0; i < gMemNameCandidateCount; i++)
+            {
+                char num[2];
+                char ch[2];
+                const uint8_t cx = (uint8_t)(sub_val_x1 + (unsigned)i * slot_w);
+
+                num[0] = (char)('1' + i);
+                num[1] = 0;
+                UI_PrintStringSmallAtPixel(num, cx, cx, y_strip, strip_bot, 0u);
+
+                ch[0] = gMemNameCandidates[i];
+                ch[1] = 0;
+                UI_PrintStringSmallAtPixel(ch, (uint8_t)(cx + 8u), (uint8_t)(cx + 8u), y_strip, strip_bot, 0u);
+            }
+        }
+    }
+}
+#endif /* ENABLE_CHINESE */
 
 static void UI_MENU_DrawTopRightRoundedBadge(const char *text, const uint8_t line, const bool center_in_area, const uint8_t area_x1, const uint8_t area_x2)
 {
@@ -1443,7 +1863,7 @@ void UI_DisplayMenu(void)
     for (i = 0; i < 3; i++)
         if (gMenuCursor > 0 || i > 0)
             if ((gMenuListCount - 1) != gMenuCursor || i != 2)
-                UI_PrintString(MenuList[gMenuIndices[gMenuCursor + i - 1]].name, 0, 0, i * 2, 8);
+                UI_PrintString(UI_MENU_GetMenuTitle(&MenuList[gMenuIndices[gMenuCursor + i - 1]]), 0, 0, i * 2, 8);
 
     // invert the current menu list item pixels
     for (i = 0; i < (8 * menu_list_width); i++)
@@ -1480,10 +1900,20 @@ void UI_DisplayMenu(void)
                 return;
             }
 
-            /* Popup : titre = grande police (comme avant), contenu plein ecran */
+            /* Popup : titre gauche, contenu plein ecran */
             menu_item_x1 = 2;
             menu_item_x2 = LCD_WIDTH - 1;
-            UI_PrintString(MenuList[gMenuIndices[menu_index]].name, 0, 0, 0, 8);
+            {
+                const t_menu_item *item = &MenuList[gMenuIndices[menu_index]];
+                const char *title = UI_MENU_GetMenuTitle(item);
+#ifdef ENABLE_CHINESE
+                if (gUiLanguage == UI_LANGUAGE_CN)
+                    /* x_end==x_start → left align */
+                    UI_PrintStringSmallAtPixel(title, 0, 0, 0, 11u, 0u);
+                else
+#endif
+                    UI_PrintString(title, 0, 0, 0, 8);
+            }
         }
     }
 #endif
@@ -1612,6 +2042,7 @@ void UI_DisplayMenu(void)
         case MENU_AM_FIX:
 #endif
 #endif
+        case MENU_LANGUAGE:
             UI_MENU_FormatValue(m, String, sizeof(String));
             if (m == MENU_MIC) {
                 gaugeLine = 4; gaugeMin = 0; gaugeMax = 8;
@@ -1668,7 +2099,7 @@ void UI_DisplayMenu(void)
 
             if (gSubMenuSelection == MR_CHANNELS_MAX)
             {
-                const char *none = "None";
+                const char *none = SUBV("None", gSubMenu_MEM_NONE_CN);
                 UI_MENU_DrawStackedSmall(&none, 1, area_y0, area_y1, 2u);
             }
             else
@@ -1685,7 +2116,9 @@ void UI_DisplayMenu(void)
 
                 if (gAskForConfirmation)
                 {
-                    UI_MENU_DrawLines3(ch, name, (gAskForConfirmation == 1) ? "SURE?" : "WAIT!", area_y0, area_y1);
+                    UI_MENU_DrawLines3(ch, name, SUBV((gAskForConfirmation == 1) ? "SURE?" : "WAIT!",
+                        (gAskForConfirmation == 1) ? "\xe7\xa1\xae\xe8\xae\xa4?" : "\xe8\xaf\xb7\xe7\xad\x89\xe5\xbe\x85!"),
+                        area_y0, area_y1);
                 }
                 else if (valid)
                 {
@@ -1731,7 +2164,9 @@ void UI_DisplayMenu(void)
                     SETTINGS_FetchChannelName(name, gSubMenuSelection);
                     if (name[0] == '\0')
                         strcpy(name, "--");
-                    UI_MENU_DrawLines3(ch, name, (gAskForConfirmation == 1) ? "SURE?" : "WAIT!", area_y0, area_y1);
+                    UI_MENU_DrawLines3(ch, name, SUBV((gAskForConfirmation == 1) ? "SURE?" : "WAIT!",
+                        (gAskForConfirmation == 1) ? "\xe7\xa1\xae\xe8\xae\xa4?" : "\xe8\xaf\xb7\xe7\xad\x89\xe5\xbe\x85!"),
+                        area_y0, area_y1);
                 }
                 else if (edit_index < 0)
                 {
@@ -1743,6 +2178,9 @@ void UI_DisplayMenu(void)
                 }
                 else
                 {
+#ifdef ENABLE_CHINESE
+                    UI_MENU_DrawMemNameEdit(2u, (unsigned int)(LCD_WIDTH - 1u));
+#else
                     const uint8_t y_ch   = UI_MENU_StackedLineY(0, 3, area_y0, area_y1, 2u);
                     const uint8_t y_edit = UI_MENU_StackedLineY(1, 3, area_y0, area_y1, 2u);
                     const uint8_t y_abc  = UI_MENU_StackedLineY(2, 3, area_y0, area_y1, 2u);
@@ -1765,6 +2203,7 @@ void UI_DisplayMenu(void)
                         UI_PrintStringSmallNormal(edit_is_uppercase ? "ABC" : "abc", 77, 0, (uint8_t)(y_abc / 8u));
                     }
 #endif
+#endif /* ENABLE_CHINESE */
                 }
             }
 
@@ -1998,10 +2437,20 @@ void UI_DisplayMenu(void)
 
                 for (li = 0, i = 0; li < lines && i < len; li++)
                 {
-                    const uint8_t tw = UI_MENU_SmallTextWidth(String + i);
-                    const uint8_t tx = (LCD_WIDTH > tw) ? (uint8_t)((LCD_WIDTH - tw) / 2u) : 0u;
+#ifdef ENABLE_CHINESE
+                    if (gUiLanguage == UI_LANGUAGE_CN) {
+                        const uint8_t tw = (uint8_t)UI_SmallStringPixelWidth(String + i);
+                        const uint8_t tx = (LCD_WIDTH > tw) ? (uint8_t)((LCD_WIDTH - tw) / 2u) : 0u;
+                        const uint8_t ty = (uint8_t)(text_y0 + (int)(li * 12u));
+                        UI_PrintStringSmallAtPixel(String + i, tx, LCD_WIDTH - 1, ty, (uint8_t)(ty + 11u), 0u);
+                    } else
+#endif
+                    {
+                        const uint8_t tw = UI_MENU_SmallTextWidth(String + i);
+                        const uint8_t tx = (LCD_WIDTH > tw) ? (uint8_t)((LCD_WIDTH - tw) / 2u) : 0u;
 
-                    UI_MENU_DrawSmallAtY(String + i, tx, (uint8_t)(text_y0 + (int)(li * line_h)));
+                        UI_MENU_DrawSmallAtY(String + i, tx, (uint8_t)(text_y0 + (int)(li * line_h)));
+                    }
 
                     while (i < len && String[i] >= 32)
                         i++;
@@ -2020,6 +2469,13 @@ void UI_DisplayMenu(void)
 
                 for (i = 0; i < len && lines > 0; lines--)
                 {
+#ifdef ENABLE_CHINESE
+                    if (gUiLanguage == UI_LANGUAGE_CN || SETTINGS_ChannelNameHasCjkUtf8(String + i)) {
+                        /* CJK glyphs (incl. Lang→中文 under English UI); centers in [x1,x2] */
+                        UI_PrintStringSmallAtPixel(String + i, (uint8_t)menu_item_x1, (uint8_t)menu_item_x2,
+                            (uint8_t)(y * 8u), (uint8_t)(y * 8u + 11u), 0u);
+                    } else
+#endif
                     UI_PrintStringSmallNormal(String + i, menu_item_x1, menu_item_x2, y);
 
                     while (i < len && String[i] >= 32)
@@ -2122,7 +2578,14 @@ void UI_DisplayMenu(void)
 #endif
         ) && gAskForConfirmation)
     {   // display confirmation (MEM_* deja inclus dans DrawLines3 en layout custom)
-        char *pPrintStr = (gAskForConfirmation == 1) ? "SURE?" : "WAIT!";
+        char *pPrintStr = (char *)SUBV((gAskForConfirmation == 1) ? "SURE?" : "WAIT!",
+            (gAskForConfirmation == 1) ? "\xe7\xa1\xae\xe8\xae\xa4?" : "\xe8\xaf\xb7\xe7\xad\x89\xe5\xbe\x85!");
+#ifdef ENABLE_CHINESE
+        if (gUiLanguage == UI_LANGUAGE_CN && gIsInSubMenu) {
+            UI_PrintStringSmallAtPixel(pPrintStr, (uint8_t)menu_item_x1, (uint8_t)menu_item_x2,
+                (uint8_t)(popup_line5 * 8u), (uint8_t)(popup_line5 * 8u + 11u), 0u);
+        } else
+#endif
         if (gIsInSubMenu)
             UI_PrintStringSmallNormal(pPrintStr, menu_item_x1, menu_item_x2, popup_line5);
         else

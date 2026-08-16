@@ -20,6 +20,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* Unified MR channel name @ SPI Flash 0x004000 slot (16 B): max UTF-8/ASCII payload e.g. 5 Hanzi */
+#define CHANNEL_NAME_MAX_BYTES 15u
+
 #include "frequencies.h"
 #include <helper/battery.h>
 #include "radio.h"
@@ -170,6 +173,11 @@ enum CHANNEL_DisplayMode_t {
 };
 typedef enum CHANNEL_DisplayMode_t CHANNEL_DisplayMode_t;
 
+typedef enum {
+    UI_LANGUAGE_EN = 0,
+    UI_LANGUAGE_CN = 1
+} UI_Language_t;
+
 typedef struct {
     uint16_t               ScreenChannel[2]; // current channels set in the radio (memory or frequency channels)
     uint16_t               FreqChannel[2]; // last frequency channels used
@@ -314,6 +322,8 @@ typedef struct {
 
 extern EEPROM_Config_t gEeprom;
 
+extern uint8_t gUiLanguage;
+
 typedef struct {
     FREQ_Config_t    rx;
     FREQ_Config_t    tx;
@@ -339,6 +349,9 @@ uint32_t SETTINGS_FetchChannelFrequency(const uint16_t channel);
 bool     SETTINGS_FetchChannelScanInfo(const uint16_t channel, uint32_t *frequency, ModulationMode_t *modulation);
 bool     SETTINGS_FetchChannelScanDisplayInfo(const uint16_t channel, ChannelScanDisplayInfo_t *info);
 void     SETTINGS_FetchChannelName(char *s, const uint16_t channel);
+#ifdef ENABLE_CHINESE
+bool     SETTINGS_ChannelNameHasCjkUtf8(const char *s);
+#endif
 void     SETTINGS_FactoryReset(bool bIsAll);
 #ifdef ENABLE_FMRADIO
     void SETTINGS_SaveFM(void);
@@ -348,6 +361,30 @@ void SETTINGS_SaveVfoIndicesFlush(void);
 void SETTINGS_SaveSettings(void);
 void SETTINGS_SaveChannelName(uint16_t channel, const char * name);
 void SETTINGS_SaveChannel(uint16_t Channel, uint8_t VFO, const VFO_Info_t *pVFO, uint8_t Mode);
+
+#if defined(ENABLE_CHINESE) || defined(ENABLE_FEAT_F4HWN)
+/* Legacy CN names @ 0x020000..0x023FFF; CN font follows at 0x024000 (no overlap) */
+
+// CN font SPI Flash layout (data written via web tool)
+// NOTE: these must match the output of gen_cn_font.py / cn_font_data.h
+#define CN_FONT_FLASH_BASE      0x024000u
+#define CN_FONT_CHAR_COUNT      6766u
+#define CN_FONT_BITMAP_SIZE     162384u
+#define CN_FONT_INDEX_SIZE      27064u
+#define CN_FONT_PY_OFFSET       189448u
+#define CN_FONT_PY_COUNT        402u
+#define CN_FONT_VERSION         2u
+#define CN_FONT_VERSION_OFFSET  205366u
+#define CN_FONT_PY_TOTAL_SIZE   15918u
+#endif
+
+#ifdef ENABLE_CHINESE
+// CN font SPI Flash functions
+void SETTINGS_InitCNFont(void);
+int16_t SETTINGS_CNCharToIndex(uint16_t unicode);
+void SETTINGS_ReadCNFontBitmap(uint16_t charIndex, uint16_t *bitmap);
+int SETTINGS_CNGetPinyinCandidates(const char *pinyin, uint16_t *unicodeOut, int maxCount, int startOffset);
+#endif
 void SETTINGS_SaveBatteryCalibration(const uint16_t * batteryCalibration);
 void SETTINGS_UpdateChannel(uint16_t channel, const VFO_Info_t *pVFO, bool keep);
 void SETTINGS_WriteBuildOptions(void);

@@ -17,7 +17,15 @@
 #ifndef UI_STATUS_H
 #define UI_STATUS_H
 
-void UI_DisplayStatus();
+#include <stdbool.h>
+
+void UI_DisplayStatus(void);
+/* MAIN-style status chrome: inverted bar + 1px rule under it (status + fb line0). */
+bool UI_StatusUsesChrome(void);
+void UI_StatusApplyChrome(void);
+void UI_StatusBlit(void);
+/* Full content blit; keeps status chrome hairline when UI_StatusUsesChrome(). */
+void UI_BlitFullScreen(void);
 
 #endif
 

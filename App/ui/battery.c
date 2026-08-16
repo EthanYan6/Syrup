@@ -21,6 +21,7 @@
 #include "driver/st7565.h"
 #include "functions.h"
 #include "ui/battery.h"
+#include "ui/ui.h"
 #include "../misc.h"
 
 void UI_DrawBattery(uint8_t* bitmap, uint8_t level, uint8_t blink)
@@ -49,6 +50,10 @@ void UI_DrawBattery(uint8_t* bitmap, uint8_t level, uint8_t blink)
 
 void UI_DisplayBattery(uint8_t level, uint8_t blink)
 {
+    /* Home has no status bar — never paint battery icon there (incl. low-bat blink) */
+    if (gScreenToDisplay == DISPLAY_MAIN)
+        return;
+
     uint8_t bitmap[sizeof(BITMAP_BatteryLevel1)];
     UI_DrawBattery(bitmap, level, blink);
     ST7565_DrawLine(LCD_WIDTH - sizeof(bitmap), 0, bitmap, sizeof(bitmap));

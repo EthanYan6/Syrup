@@ -61,6 +61,10 @@ void UI_DisplayStatus()
     if (APP_IsScreenSaverDisplayed())
         return;
 
+    /* Home owns the status line as the top of the wave — do not blank it */
+    if (gScreenToDisplay == DISPLAY_MAIN)
+        return;
+
     UI_StatusClear();
 
     uint8_t     *line = gStatusLine;
@@ -350,5 +354,73 @@ void UI_DisplayStatus()
 
     // **************
 
-    ST7565_BlitStatusLine();
+    UI_StatusBlit();
+}
+
+bool UI_StatusUsesChrome(void)
+{
+	/* Home owns the top band as the wave; menu keeps the classic bare status. */
+	if (gScreenToDisplay == DISPLAY_MAIN)
+		return false;
+	if (gScreenToDisplay == DISPLAY_MENU)
+		return false;
+	return true;
+}
+
+void UI_StatusApplyChrome(void)
+{
+	unsigned int i;
+
+	if (!UI_StatusUsesChrome())
+		return;
+
+	/* 1px black rule on the first row of content (just under the status bar) */
+	for (i = 0; i < LCD_WIDTH; i++)
+		gFrameBuffer[0][i] |= 0x01u;
+}
+
+void UI_StatusBlit(void)
+{
+	/* Menu: original status look — no invert, no chrome lines/shift */
+	if (gScreenToDisplay == DISPLAY_MENU) {
+		ST7565_BlitStatusLine();
+		return;
+	}
+
+	uint8_t      saved[LCD_WIDTH];
+	unsigned int i;
+
+	memcpy(saved, gStatusLine, sizeof(saved));
+
+	/*
+	 * MAIN-style status (FM / scanner / aircopy / … via UI_DisplayStatus):
+	 *   - full invert
+	 *   - content ↓1px inside status band
+	 *   - 1px black on top of status
+	 *   - 1px black just below status (content fb line0)
+	 * Status bar + under-rule are one unit: always blit together.
+	 * Spectrum / foxhunt / logo keep raw ST7565_BlitStatusLine().
+	 */
+	for (i = 0; i < LCD_WIDTH; i++) {
+		uint8_t b = (uint8_t)(saved[i] ^ 0xFFu);
+		gStatusLine[i] = (uint8_t)((b << 1) | 0x01u);
+	}
+
+	UI_StatusApplyChrome();
+
+	ST7565_BlitStatusLine();
+	ST7565_BlitLine(0);
+	memcpy(gStatusLine, saved, sizeof(saved));
+}
+
+void UI_BlitFullScreen(void)
+{
+	/*
+	 * UI_DisplayClear() wipes fb line0 (and the chrome bit). Pushing the
+	 * content plane alone would make the under-status rule vanish until the
+	 * next UI_StatusBlit — visible flicker. Re-stamp chrome first so status
+	 * bar + rule stay one unit with the page redraw.
+	 */
+	UI_StatusApplyChrome();
+	ST7565_BlitFullScreen();
 }

@@ -26,6 +26,7 @@
 #include "ui/aircopy.h"
 #include "ui/helper.h"
 #include "ui/inputbox.h"
+#include "ui/status.h"
 
 static void set_bit(uint8_t* array, int bit_index) {
     array[bit_index / 8] |= (1 << (bit_index % 8));
@@ -149,7 +150,7 @@ void UI_DisplayAircopy(void)
         }
     }
 
-    ST7565_BlitFullScreen();
+    UI_BlitFullScreen();
 }
 
 #endif

@@ -20,6 +20,7 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 enable_language(C ASM)
 
 option(DEV "Prepare the rolling syrup development firmware" OFF)
+option(ENABLE_CHINESE "UTF-8 Chinese menu UI" OFF)
 
 # Allow -DBUILD_COMMIT=... or BUILD_COMMIT env to override (useful in CI/Docker).
 if(NOT BUILD_COMMIT)

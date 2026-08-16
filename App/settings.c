@@ -30,6 +30,12 @@
 
 EEPROM_Config_t gEeprom = { 0 };
 
+uint8_t gUiLanguage = UI_LANGUAGE_EN;
+
+#ifdef ENABLE_CHINESE
+static void SETTINGS_MigrateLegacyCnChannelNamesToUnified(void);
+#endif
+
 // Load a DTMF code from EEPROM, falling back to default_val if invalid.
 static void SETTINGS_LoadEepromDtmf(uint32_t addr, char *dest, size_t size, const char *default_val)
 {
@@ -278,6 +284,12 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     #ifdef ENABLE_VOICE
     gEeprom.VOICE_PROMPT = (Data[0] < 3) ? Data[0] : VOICE_PROMPT_ENGLISH;
     #endif
+    {
+        /* Language @ 0x00A170 (after VERSION_STRING_2 @ 0x00A160..0x00A16F) */
+        uint8_t langHint[2] = { 0, 0 };
+        PY25Q16_ReadBuffer(0x00A170, langHint, sizeof(langHint));
+        gUiLanguage = (langHint[0] < 2) ? langHint[0] : UI_LANGUAGE_EN;
+    }
     #ifdef ENABLE_RSSI_BAR
         for (uint8_t i = 0; i < 7; i++) {
             int8_t val = (int8_t)Data[i + 1];
@@ -510,6 +522,10 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
         // And set special session settings for actions
         gSetting_set_ptt_session = gSetting_set_ptt;
     #endif
+
+#ifdef ENABLE_CHINESE
+    SETTINGS_MigrateLegacyCnChannelNamesToUnified();
+#endif
 }
 
 void SETTINGS_LoadCalibration(void)
@@ -710,6 +726,8 @@ bool SETTINGS_FetchChannelScanDisplayInfo(const uint16_t channel, ChannelScanDis
 
 void SETTINGS_FetchChannelName(char *s, const uint16_t channel)
 {
+    int i;
+
     if (s == NULL)
         return;
 
@@ -721,18 +739,29 @@ void SETTINGS_FetchChannelName(char *s, const uint16_t channel)
     if (!RADIO_CheckValidChannel(channel, false, 0))
         return;
 
-    // 0x0F50
-    PY25Q16_ReadBuffer(0x004000 + (channel * 16), s, 10);
+    // Slot @ 0x004000 + ch*16 (16 B); payload up to CHANNEL_NAME_MAX_BYTES
+    PY25Q16_ReadBuffer(0x004000 + (channel * 16), s, CHANNEL_NAME_MAX_BYTES);
 
-    int i;
-    for (i = 0; i < 10; i++)
-        if (s[i] < 32 || s[i] > 127)
-            break;                // invalid char
+    for (i = 0; i < (int)CHANNEL_NAME_MAX_BYTES; i++)
+    {
+        uint8_t c = (uint8_t)s[i];
+        if (c == 0 || c == 0xFF)
+            break;
+#ifdef ENABLE_CHINESE
+        if (c >= 0xE4 && c <= 0xEF)
+        {
+            i += 2;
+            continue;
+        }
+#endif
+        if (c < 32 || c > 127)
+            break;
+    }
+    s[i] = 0;
 
-    s[i--] = 0;                   // null term
-
-    while (i >= 0 && s[i] == 32)  // trim trailing spaces
-        s[i--] = 0;               // null term
+    i--;
+    while (i >= 0 && s[i] == 32)
+        s[i--] = 0;
 }
 
 void SETTINGS_FactoryReset(bool bIsAll)
@@ -1153,6 +1182,14 @@ void SETTINGS_SaveSettings(void)
 #ifdef ENABLE_FEAT_F4HWN_VOL
     SETTINGS_WriteCurrentVol();
 #endif
+
+    {
+        /* Language @ 0x00A170 — do not touch VERSION_STRING_2 @ 0x00A160 */
+        uint8_t langHint[2] = { 0, 0 };
+        PY25Q16_ReadBuffer(0x00A170, langHint, sizeof(langHint));
+        langHint[0] = gUiLanguage & 1u;
+        PY25Q16_WriteBuffer(0x00A170, langHint, sizeof(langHint), false);
+    }
 }
 
 void SETTINGS_SaveChannel(uint16_t Channel, uint8_t VFO, const VFO_Info_t *pVFO, uint8_t Mode)
@@ -1236,8 +1273,11 @@ void SETTINGS_SaveChannelName(uint16_t channel, const char * name)
 {
     uint16_t offset = channel * 16;
     uint8_t buf[16] = {0};
-    memcpy(buf, name, MIN(strlen(name), 10u));
-    // 0x0F50
+    size_t len = strlen(name);
+    if (len > CHANNEL_NAME_MAX_BYTES)
+        len = CHANNEL_NAME_MAX_BYTES;
+    memcpy(buf, name, len);
+    // Slot @ 0x004000 + ch*16 (16 B)
     PY25Q16_WriteBuffer(0x004000 + offset, buf, 0x10, false);
 }
 
@@ -1415,3 +1455,252 @@ void SETTINGS_ResetTxLock(void)
 }
 
 #endif
+
+#ifdef ENABLE_CHINESE
+
+/* Legacy dedicated CN name area (pre-unified); erased after migration */
+#define CN_NAME_LEGACY_BASE 0x020000u
+
+static void SETTINGS_LegacyMigrationReadCnSlot(char *s, uint16_t channel)
+{
+    int i;
+
+    if (s == NULL)
+        return;
+    s[0] = 0;
+    if (!RADIO_CheckValidChannel(channel, false, 0))
+        return;
+
+    PY25Q16_ReadBuffer(CN_NAME_LEGACY_BASE + (channel * 16), s, 10);
+
+    for (i = 0; i < 10; i++)
+    {
+        uint8_t c = (uint8_t)s[i];
+        if (c == 0 || c == 0xFF)
+            break;
+        if (c >= 0xE4 && c <= 0xEF)
+        {
+            i += 2;
+            continue;
+        }
+        if (c < 32 || c > 127)
+            break;
+    }
+    s[i] = 0;
+
+    i--;
+    while (i >= 0 && s[i] == ' ')
+        s[i--] = 0;
+}
+
+/*
+ * One-shot migration: only write unified slot (0x004000) when legacy CN name
+ * is non-empty. Preserve English otherwise. Erase legacy region when done.
+ */
+static bool SETTINGS_LegacyCnFlashRegionIsBlank(void)
+{
+    uint8_t sample[256];
+    uint32_t sec;
+
+    for (sec = 0; sec < 4u; sec++)
+    {
+        uint32_t base;
+        size_t i;
+
+        base = CN_NAME_LEGACY_BASE + sec * 0x1000u;
+        PY25Q16_ReadBuffer(base, sample, sizeof(sample));
+        for (i = 0; i < sizeof(sample); i++)
+        {
+            if (sample[i] != 0xFFu)
+                return false;
+        }
+    }
+    return true;
+}
+
+static void SETTINGS_MigrateLegacyCnChannelNamesToUnified(void)
+{
+    uint16_t channel;
+
+    if (SETTINGS_LegacyCnFlashRegionIsBlank())
+        return;
+
+    for (channel = 0; channel < MR_CHANNELS_MAX; channel++)
+    {
+        char legacy_cn[16];
+        bool has_legacy_name;
+
+        SETTINGS_LegacyMigrationReadCnSlot(legacy_cn, channel);
+        has_legacy_name = (legacy_cn[0] != 0);
+        if (!has_legacy_name)
+            continue;
+
+        SETTINGS_SaveChannelName(channel, legacy_cn);
+    }
+
+    for (channel = 0; channel < 4u; channel++)
+        PY25Q16_SectorErase(CN_NAME_LEGACY_BASE + (uint32_t)channel * 0x1000u);
+}
+
+bool SETTINGS_ChannelNameHasCjkUtf8(const char *s)
+{
+    const unsigned char *p;
+
+    if (s == NULL)
+        return false;
+    if (s[0] == 0)
+        return false;
+
+    p = (const unsigned char *)s;
+    while (*p != 0)
+    {
+        if (*p >= 0xE4 && *p <= 0xEF)
+            return true;
+        if (*p < 0x80u)
+        {
+            p++;
+            continue;
+        }
+        p++;
+    }
+    return false;
+}
+
+// ── CN Font SPI Flash functions ──
+// Font data is written to SPI Flash at CN_FONT_FLASH_BASE (0x024000)
+// Layout: [bitmaps][unicode_index][pinyin_table]
+
+void SETTINGS_InitCNFont(void)
+{
+    // Font data is written to SPI Flash via web tool (USB SPI Flash write command).
+    // On boot, verify the font is valid and matches firmware constants.
+    // If not, Chinese chars will show as blank/black boxes.
+    uint8_t ver;
+    uint16_t probe[2];
+
+    // Check version byte
+    PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_VERSION_OFFSET, &ver, 1);
+    if (ver != CN_FONT_VERSION)
+        return;  // Version mismatch
+
+    // Check header probe values (first two character bitmaps)
+    PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE, (uint8_t *)probe, 4);
+    if (probe[0] != 0x1100 || probe[1] != 0x2100)
+        return;  // Header probe mismatch
+
+    // Read first entry of index table to verify it starts with valid Unicode
+    uint32_t first_entry;
+    PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_BITMAP_SIZE, (uint8_t *)&first_entry, 4);
+
+    // The index table is sorted by Unicode, so first entry should have smallest Unicode
+    // For our font, first entry Unicode should be within CJK unified
+    uint16_t first_unicode = (uint16_t)(first_entry >> 16);
+    if (first_unicode < 0x4E00 || first_unicode > 0x9FFF)
+        return;  // Index table offset seems wrong
+
+    // Font validation passed
+}
+
+int16_t SETTINGS_CNCharToIndex(uint16_t unicode)
+{
+    // Binary search the Unicode index table in SPI Flash
+    // Each entry: uint32_t = (unicode:16 | char_index:16)
+    // Index table is sorted by unicode, so we can use binary search
+    uint16_t lo = 0;
+    uint16_t hi = CN_FONT_CHAR_COUNT;
+
+    while (lo < hi)
+    {
+        uint16_t mid = (lo + hi) / 2;
+        uint32_t entry;
+        PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_BITMAP_SIZE + (mid * 4),
+                           (uint8_t *)&entry, 4);
+        uint16_t stored_unicode = (uint16_t)(entry >> 16);
+
+        if (stored_unicode == unicode)
+        {
+            return (int16_t)(entry & 0xFFFF);
+        }
+        else if (stored_unicode < unicode)
+        {
+            lo = mid + 1;
+        }
+        else
+        {
+            hi = mid;
+        }
+    }
+    return -1;
+}
+
+void SETTINGS_ReadCNFontBitmap(uint16_t charIndex, uint16_t *bitmap)
+{
+    // charIndex is the character index (0, 1, 2, ...) from the index table
+    // Each character has 12 rows, so uint16_t offset = charIndex * 12
+    // Byte offset = (charIndex * 12) * 2 = charIndex * 24
+    PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + (charIndex * 24u),
+                       (uint8_t *)bitmap, 24);
+}
+
+int SETTINGS_CNGetPinyinCandidates(const char *pinyin, uint16_t *unicodeOut, int maxCount, int startOffset)
+{
+    // Search pinyin table in SPI Flash
+    // Format per entry: [str_len:1][ascii:str_len][char_count:1][unicodes:char_count*2]
+    // Each unicode is stored as 2 bytes (big-endian for efficient lookup)
+    // Returns total matching candidate count; fills unicodeOut with up to maxCount entries from startOffset
+    uint16_t offset = 0;
+    int count = 0;
+    int total = 0;
+    size_t pinyin_len = strlen(pinyin);
+
+    for (uint16_t i = 0; i < CN_FONT_PY_COUNT && offset < CN_FONT_PY_TOTAL_SIZE; i++)
+    {
+        uint8_t str_len;
+        PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_PY_OFFSET + offset,
+                           &str_len, 1);
+        offset++;
+
+        if (str_len == pinyin_len)
+        {
+            char syllable[8];
+            PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_PY_OFFSET + offset,
+                               (uint8_t *)syllable, str_len);
+            syllable[str_len] = 0;
+
+            if (memcmp(syllable, pinyin, pinyin_len) == 0)
+            {
+                offset += str_len;
+                uint8_t char_count;
+                PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_PY_OFFSET + offset,
+                                   &char_count, 1);
+                offset++;
+                total = char_count;
+
+                for (uint8_t j = 0; j < char_count; j++)
+                {
+                    if (j >= startOffset && count < maxCount)
+                    {
+                        uint8_t uni_bytes[2];
+                        PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_PY_OFFSET + offset,
+                                           uni_bytes, 2);
+                        // Read unicode directly (big-endian: high byte first)
+                        unicodeOut[count++] = (uint16_t)((uni_bytes[0] << 8) | uni_bytes[1]);
+                    }
+                    offset += 2;
+                }
+                return total;
+            }
+        }
+
+        offset += str_len;
+        uint8_t char_count;
+        PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_PY_OFFSET + offset,
+                           &char_count, 1);
+        offset++;
+        offset += char_count * 2;
+    }
+
+    return 0;
+}
+
+#endif /* ENABLE_CHINESE */

@@ -15,6 +15,7 @@
  */
 
 #include <string.h>
+#include <stdbool.h>
 
 #if !defined(ENABLE_OVERLAY)
     #include "py32f0xx.h"
@@ -30,6 +31,9 @@
 #include "driver/eeprom.h"
 #include "driver/gpio.h"
 #include "driver/keyboard.h"
+#ifdef ENABLE_CHINESE
+#include "driver/py25q16.h"
+#endif
 #include "frequencies.h"
 #include "helper/battery.h"
 #include "misc.h"
@@ -44,6 +48,311 @@
 
 
 uint8_t gUnlockAllTxConfCnt;
+
+#ifdef ENABLE_CHINESE
+uint8_t gMemNameInputMode = MEM_NAME_INPUT_LOWER;
+uint8_t gMemNameCandidateCount;
+char gMemNameCandidates[6];
+uint8_t gMemNameSymbolPage;
+
+const char gMemNameSymbolCharset[] = ".,!?@#$%&*+-/=_:;()[]{}<>\"'\\|~^`";
+const uint8_t gMemNameSymbolCharsetCount = (uint8_t)(sizeof(gMemNameSymbolCharset) - 1u);
+
+char     gPinyinBuffer[PINYIN_MAX_LEN + 1];
+uint8_t  gPinyinLen;
+uint16_t gCNCandidates[CN_CANDIDATE_MAX];
+uint8_t  gCNCandidateCount;
+uint8_t  gCNCandidateOffset;
+uint8_t  gCNCandidateTotal;
+char     gPinyinDigitSeq[PINYIN_MAX_LEN + 1];
+uint8_t  gPinyinDigitLen;
+char     gPinyinCandidates[PINYIN_CAND_MAX][PINYIN_MAX_LEN + 1];
+uint8_t  gPinyinCandidateCount;
+uint8_t  gPinyinCandidateIndex;
+uint8_t  gPinyinCandidateOffset;
+
+static void MENU_PinyinSearch(void)
+{
+    if (gPinyinLen == 0)
+    {
+        gCNCandidateCount = 0;
+        gCNCandidateTotal = 0;
+        gCNCandidateOffset = 0;
+        return;
+    }
+    gMemNameCandidateCount = 0;
+    {
+        const int raw_total = SETTINGS_CNGetPinyinCandidates(
+            gPinyinBuffer, gCNCandidates, CN_CANDIDATE_MAX, gCNCandidateOffset);
+        gCNCandidateTotal = (uint8_t)(raw_total < 0 ? 0 : raw_total);
+    }
+    gCNCandidateCount = gCNCandidateTotal - gCNCandidateOffset;
+    if (gCNCandidateCount > CN_CANDIDATE_MAX)
+        gCNCandidateCount = CN_CANDIDATE_MAX;
+}
+
+static void MENU_PinyinReset(void)
+{
+    gPinyinLen = 0;
+    gPinyinBuffer[0] = 0;
+    gCNCandidateCount = 0;
+    gCNCandidateOffset = 0;
+    gCNCandidateTotal = 0;
+    gMemNameCandidateCount = 0;
+    gPinyinDigitLen = 0;
+    gPinyinDigitSeq[0] = 0;
+    gPinyinCandidateCount = 0;
+    gPinyinCandidateIndex = 0;
+    gPinyinCandidateOffset = 0;
+}
+
+static const char *MENU_GetMemNameLettersByKey(const KEY_Code_t key);
+
+static bool MENU_PinyinMatchesDigits(const char* pinyin, uint8_t py_len)
+{
+    if (py_len != gPinyinDigitLen)
+        return false;
+
+    for (uint8_t i = 0; i < py_len; i++)
+    {
+        char py_ch = pinyin[i];
+        char dig = gPinyinDigitSeq[i];
+
+        if (dig < '2' || dig > '9')
+            return false;
+
+        const char* letters = MENU_GetMemNameLettersByKey((KEY_Code_t)(KEY_2 + dig - '2'));
+        if (!letters)
+            return false;
+
+        bool found = false;
+        for (const char* p = letters; *p; p++)
+        {
+            if (*p == py_ch)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            return false;
+    }
+    return true;
+}
+
+static void MENU_BuildPinyinCandidatesFromDigits(void)
+{
+    gPinyinCandidateCount = 0;
+    gPinyinCandidateIndex = 0;
+    gPinyinCandidateOffset = 0;
+
+    if (gPinyinDigitLen == 0)
+        return;
+
+    uint16_t offset = 0;
+
+    for (uint16_t i = 0; i < CN_FONT_PY_COUNT && gPinyinCandidateCount < PINYIN_CAND_MAX && offset < CN_FONT_PY_TOTAL_SIZE; i++)
+    {
+        uint8_t str_len;
+        PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_PY_OFFSET + offset, &str_len, 1);
+        offset++;
+
+        if (str_len > 0 && str_len <= PINYIN_MAX_LEN)
+        {
+            char syllable[8];
+            PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_PY_OFFSET + offset, (uint8_t *)syllable, str_len);
+            syllable[str_len] = 0;
+
+            if (MENU_PinyinMatchesDigits(syllable, str_len))
+            {
+                strcpy(gPinyinCandidates[gPinyinCandidateCount], syllable);
+                gPinyinCandidateCount++;
+            }
+        }
+
+        offset += str_len;
+        uint8_t char_count;
+        PY25Q16_ReadBuffer(CN_FONT_FLASH_BASE + CN_FONT_PY_OFFSET + offset, &char_count, 1);
+        offset++;
+        offset += char_count * 2;
+    }
+}
+
+void MENU_EnsurePinyinPageVisible(void)
+{
+    uint8_t idx = gPinyinCandidateIndex;
+    uint8_t offset, x;
+
+    if (idx >= gPinyinCandidateCount) idx = gPinyinCandidateCount ? gPinyinCandidateCount - 1u : 0;
+    gPinyinCandidateIndex = idx;
+
+    x = 0;
+    for (offset = gPinyinCandidateOffset; offset < gPinyinCandidateCount; offset++)
+    {
+        uint8_t py_w = (uint8_t)strlen(gPinyinCandidates[offset]) * 6u + 6u;
+        if (x + py_w > 123u) break;
+        if (offset == idx) return;
+        x += py_w;
+    }
+
+    x = (uint8_t)strlen(gPinyinCandidates[idx]) * 6u + 6u;
+    for (offset = idx; offset > 0; offset--)
+    {
+        uint8_t py_w = (uint8_t)strlen(gPinyinCandidates[offset - 1]) * 6u + 6u;
+        if (x + py_w > 123u) break;
+        x += py_w;
+    }
+    gPinyinCandidateOffset = offset;
+}
+
+static const char *MENU_GetMemNameLettersByKey(const KEY_Code_t key)
+{
+    static const char *const map[] = {
+        "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"
+    };
+    if (key < KEY_2 || key > KEY_9)
+        return NULL;
+    return map[key - KEY_2];
+}
+
+static void MENU_BuildMemNameCandidatesFromKey(const KEY_Code_t key)
+{
+    const char *letters = MENU_GetMemNameLettersByKey(key);
+    gMemNameCandidateCount = 0;
+    if (letters == NULL)
+        return;
+
+    while (letters[gMemNameCandidateCount] != 0 && gMemNameCandidateCount < ARRAY_SIZE(gMemNameCandidates))
+    {
+        const char c = letters[gMemNameCandidateCount];
+        gMemNameCandidates[gMemNameCandidateCount] =
+            (gMemNameInputMode == MEM_NAME_INPUT_UPPER) ? (char)(c - ('a' - 'A')) : c;
+        gMemNameCandidateCount++;
+    }
+}
+
+static void MENU_BuildMemNameSymbolCandidates(void)
+{
+    static const uint8_t per_page = 6u;
+    const uint8_t total = gMemNameSymbolCharsetCount;
+    const uint8_t pages = (total > 0u) ? (uint8_t)((total + per_page - 1u) / per_page) : 0u;
+    const uint8_t base = (uint8_t)(gMemNameSymbolPage * per_page);
+
+    gMemNameCandidateCount = 0;
+
+    if (pages == 0u)
+        return;
+    if (gMemNameSymbolPage >= pages)
+        gMemNameSymbolPage = 0u;
+
+    {
+        uint8_t i;
+        for (i = 0; i < per_page; i++)
+        {
+            const uint8_t idx = (uint8_t)(base + i);
+            if (idx >= total)
+                break;
+            gMemNameCandidates[gMemNameCandidateCount] = gMemNameSymbolCharset[idx];
+            gMemNameCandidateCount++;
+        }
+    }
+}
+
+static void MENU_MemNameFlipSymbolPage(int8_t delta)
+{
+    const uint8_t per_page = 6u;
+    const uint8_t total = gMemNameSymbolCharsetCount;
+    uint8_t pages;
+
+    if (total == 0u)
+        return;
+
+    pages = (uint8_t)((total + per_page - 1u) / per_page);
+    if (pages <= 1u)
+        return;
+
+    {
+        const int8_t step = (delta > 0) ? 1 : -1;
+        const uint8_t last_page = (uint8_t)(pages - 1u);
+
+        gMemNameSymbolPage =
+            (uint8_t)NUMBER_AddWithWraparound(gMemNameSymbolPage, step, 0, last_page);
+    }
+    MENU_BuildMemNameSymbolCandidates();
+}
+
+static uint8_t MENU_MemNameSlotWidthAt(int bi)
+{
+    const int max_b = (int)CHANNEL_NAME_MAX_BYTES;
+
+    if (bi < 0 || bi >= max_b)
+        return 1u;
+
+    if ((uint8_t)edit[bi] >= 0xE4 && (uint8_t)edit[bi] <= 0xEF)
+        return 3u;
+
+    return 1u;
+}
+
+static int MENU_MemNameNextSlotIndex(int index)
+{
+    const int max_b = (int)CHANNEL_NAME_MAX_BYTES;
+    int bi = 0;
+
+    if (index >= max_b)
+        return max_b;
+
+    while (bi < max_b)
+    {
+        const uint8_t w = MENU_MemNameSlotWidthAt(bi);
+
+        if (index < bi + (int)w)
+            return bi + (int)w;
+
+        bi += (int)w;
+    }
+    return max_b;
+}
+
+static int MENU_MemNamePrevSlotIndex(int index)
+{
+    const int max_b = (int)CHANNEL_NAME_MAX_BYTES;
+    int bi = 0;
+    int prev = 0;
+
+    if (index <= 0)
+        return 0;
+
+    if (index > max_b)
+        index = max_b;
+
+    while (bi < index && bi < max_b)
+    {
+        prev = bi;
+        bi += (int)MENU_MemNameSlotWidthAt(bi);
+    }
+    return prev;
+}
+
+static void MENU_MemNameAdvanceAfterInput(void)
+{
+    gMemNameCandidateCount = 0;
+
+    edit_index = MENU_MemNameNextSlotIndex(edit_index);
+
+    if (edit_index < (int)CHANNEL_NAME_MAX_BYTES)
+    {
+        if (gMemNameInputMode == MEM_NAME_INPUT_SYMBOL)
+            MENU_BuildMemNameSymbolCandidates();
+        return;
+    }
+
+    gFlagAcceptSetting  = false;
+    gAskForConfirmation = 0;
+    if (memcmp(edit_original, edit, sizeof(edit_original)) == 0)
+        gIsInSubMenu = false;
+}
+#endif /* ENABLE_CHINESE */
 
 #ifdef ENABLE_F_CAL_MENU
     void writeXtalFreqCal(const int32_t value, const bool update_eeprom)
@@ -344,6 +653,10 @@ int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
             *pMax = ARRAY_SIZE(gSubMenu_BAT_TXT) - 1;
             break;
 
+        case MENU_LANGUAGE:
+            *pMax = 1;
+            break;
+
 #ifdef ENABLE_DTMF_CALLING
         case MENU_D_HOLD:
             *pMin = 5;
@@ -628,12 +941,24 @@ void MENU_AcceptSetting(void)
             return;
 
         case MENU_MEM_NAME:
+#ifdef ENABLE_CHINESE
+            {
+                int i;
+                for (i = (int)CHANNEL_NAME_MAX_BYTES - 1; i >= 0; i--) {
+                    uint8_t c = (uint8_t)edit[i];
+                    if (c != (uint8_t)MEM_NAME_EDIT_PAD && c != 0x00 && c != 0xff)
+                        break;
+                    edit[i] = 0;
+                }
+                edit[CHANNEL_NAME_MAX_BYTES] = 0;
+            }
+#else
             for (int i = 9; i >= 0; i--) {
                 if (edit[i] != ' ' && edit[i] != 0x00 && edit[i] != 0xff)
                     break;
                 edit[i] = ' ';
             }
-
+#endif
             SETTINGS_SaveChannelName(gSubMenuSelection, edit);
             return;
 
@@ -801,6 +1126,12 @@ void MENU_AcceptSetting(void)
         case MENU_BAT_TXT:
             gSetting_battery_text = gSubMenuSelection;
             break;
+
+        case MENU_LANGUAGE:
+            gUiLanguage = gSubMenuSelection & 1u;
+            SETTINGS_SaveSettings();
+            gUpdateDisplay = true;
+            return;
 
 #ifdef ENABLE_DTMF_CALLING
         case MENU_D_DCD:
@@ -1321,6 +1652,10 @@ void MENU_ShowCurrentSetting(void)
             gSubMenuSelection = gSetting_battery_text;
             return;
 
+        case MENU_LANGUAGE:
+            gSubMenuSelection = gUiLanguage;
+            return;
+
 #ifdef ENABLE_DTMF_CALLING
         case MENU_D_DCD:
             gSubMenuSelection = gTxVfo->DTMF_DECODING_ENABLE;
@@ -1524,6 +1859,7 @@ void MENU_ShowCurrentSetting(void)
     }
 }
 
+#ifndef ENABLE_CHINESE
 static KEY_Code_t edit_last_key = 255;
 static uint8_t edit_char_index = 0;
 
@@ -1539,6 +1875,7 @@ static const char* const char_map[10] = {
     "tuv8",                         // KEY_8
     "wxyz9"                         // KEY_9
 };
+#endif
 
 static bool MENU_IsEditingName() {
     return !gCssBackgroundScan
@@ -1560,7 +1897,161 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
 
     if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && edit_index >= 0)
-    {   // currently editing the channel name
+    {
+#ifdef ENABLE_CHINESE
+        const int name_limit = (int)CHANNEL_NAME_MAX_BYTES;
+
+        if (edit_index >= name_limit)
+        {
+            gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            return;
+        }
+
+        if (gMemNameInputMode == MEM_NAME_INPUT_DIGIT)
+        {
+            if (Key <= KEY_9)
+            {
+                edit[edit_index] = (char)('0' + Key - KEY_0);
+                edit_index++;
+                if (edit_index > name_limit)
+                    edit_index = name_limit;
+            }
+            gCNCandidateCount = 0;
+            gCNCandidateOffset = 0;
+            gCNCandidateTotal = 0;
+            gMemNameCandidateCount = 0;
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
+
+        if (gMemNameInputMode == MEM_NAME_INPUT_LOWER ||
+            gMemNameInputMode == MEM_NAME_INPUT_UPPER)
+        {
+            if (Key >= KEY_1 && Key <= KEY_4 && gMemNameCandidateCount > 0)
+            {
+                const uint8_t idx = (uint8_t)(Key - KEY_1);
+                if (idx < gMemNameCandidateCount)
+                {
+                    edit[edit_index] = gMemNameCandidates[idx];
+                    edit_index++;
+                    if (edit_index > name_limit)
+                        edit_index = name_limit;
+                    gMemNameCandidateCount = 0;
+                    gRequestDisplayScreen = DISPLAY_MENU;
+                    return;
+                }
+            }
+            if (Key >= KEY_2 && Key <= KEY_9)
+            {
+                MENU_BuildMemNameCandidatesFromKey(Key);
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+            }
+            gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            return;
+        }
+
+        if (gMemNameInputMode == MEM_NAME_INPUT_SYMBOL)
+        {
+            if (Key >= KEY_1 && Key <= KEY_6 && gMemNameCandidateCount > 0u)
+            {
+                const uint8_t idx = (uint8_t)(Key - KEY_1);
+
+                if (idx < gMemNameCandidateCount)
+                {
+                    edit[edit_index] = gMemNameCandidates[idx];
+                    MENU_MemNameAdvanceAfterInput();
+                    gRequestDisplayScreen = DISPLAY_MENU;
+                    return;
+                }
+            }
+            gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            return;
+        }
+
+        if (gUiLanguage == UI_LANGUAGE_CN)
+        {
+            if (Key == KEY_0)
+            {
+                if (gPinyinDigitLen > 0)
+                {
+                    gPinyinDigitLen--;
+                    gPinyinDigitSeq[gPinyinDigitLen] = 0;
+                    gCNCandidateCount = 0;
+                    gCNCandidateOffset = 0;
+                    gCNCandidateTotal = 0;
+                    MENU_BuildPinyinCandidatesFromDigits();
+                    gRequestDisplayScreen = DISPLAY_MENU;
+                    return;
+                }
+                if (gCNCandidateCount > 0)
+                {
+                    gCNCandidateCount = 0;
+                    gCNCandidateOffset = 0;
+                    gCNCandidateTotal = 0;
+                    gRequestDisplayScreen = DISPLAY_MENU;
+                    return;
+                }
+                gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+                return;
+            }
+
+            if (Key <= KEY_9)
+            {
+                if (gCNCandidateCount > 0)
+                {
+                    if (Key >= KEY_1 && Key <= KEY_6)
+                    {
+                        const uint8_t pick_idx = (uint8_t)(Key - KEY_1);
+                        if (pick_idx < gCNCandidateCount)
+                        {
+                            if (edit_index + 3 > name_limit)
+                            {
+                                gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+                                return;
+                            }
+                            {
+                                uint16_t unicode = gCNCandidates[pick_idx];
+                                edit[edit_index]     = (char)(0xE0 | (unicode >> 12));
+                                edit[edit_index + 1] = (char)(0x80 | ((unicode >> 6) & 0x3F));
+                                edit[edit_index + 2] = (char)(0x80 | (unicode & 0x3F));
+                                edit_index += 3;
+                                if (edit_index > name_limit)
+                                    edit_index = name_limit;
+                                MENU_PinyinReset();
+                                gRequestDisplayScreen = DISPLAY_MENU;
+                                return;
+                            }
+                        }
+                    }
+                    gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+                    return;
+                }
+
+                if (Key >= KEY_2 && Key <= KEY_9)
+                {
+                    if (gPinyinDigitLen < PINYIN_MAX_LEN)
+                    {
+                        gPinyinDigitSeq[gPinyinDigitLen] = (char)('2' + Key - KEY_2);
+                        gPinyinDigitLen++;
+                        gPinyinDigitSeq[gPinyinDigitLen] = 0;
+                        gCNCandidateCount = 0;
+                        gCNCandidateOffset = 0;
+                        gCNCandidateTotal = 0;
+                        MENU_BuildPinyinCandidatesFromDigits();
+                    }
+                    gRequestDisplayScreen = DISPLAY_MENU;
+                    return;
+                }
+
+                gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            }
+            return;
+        }
+
+        gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+        return;
+#else
         if (edit_index >= 10)
             return;
 
@@ -1570,7 +2061,7 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         {
             edit[edit_index] = '0' + key_idx;
             edit_last_key = 255;
-            
+
             gRequestDisplayScreen = DISPLAY_MENU;
             return;
         }
@@ -1598,6 +2089,7 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
         gRequestDisplayScreen = DISPLAY_MENU;
         return;
+#endif
     }
 
     if (bKeyHeld)
@@ -1773,6 +2265,105 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
 static void MENU_Key_EXIT(bool bKeyPressed, bool bKeyHeld)
 {
+#ifdef ENABLE_CHINESE
+    if (MENU_IsEditingName())
+    {
+        if (bKeyHeld && bKeyPressed)
+        {
+            gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+            BACKLIGHT_TurnOn();
+            gAskForConfirmation = 0;
+            gInputBoxIndex = 0;
+            edit_index = -1;
+            gMemNameCandidateCount = 0;
+            MENU_PinyinReset();
+            gCNCandidateCount = 0;
+            gCNCandidateOffset = 0;
+            gCNCandidateTotal = 0;
+            gIsInSubMenu = false;
+            gFlagRefreshSetting = true;
+#ifdef ENABLE_VOICE
+            gAnotherVoiceID = VOICE_ID_CANCEL;
+#endif
+            gRequestDisplayScreen = DISPLAY_MENU;
+            gPttWasReleased = true;
+            return;
+        }
+
+        if (!bKeyPressed)
+            return;
+
+        gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+        BACKLIGHT_TurnOn();
+
+        if (gAskForConfirmation)
+        {
+            gAskForConfirmation = 0;
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
+
+        if (gPinyinDigitLen > 0 || gPinyinCandidateCount > 0 || gCNCandidateCount > 0)
+        {
+            gPinyinDigitLen = 0;
+            gPinyinDigitSeq[0] = 0;
+            gPinyinCandidateCount = 0;
+            gPinyinCandidateIndex = 0;
+            gPinyinCandidateOffset = 0;
+            gCNCandidateCount = 0;
+            gCNCandidateOffset = 0;
+            gCNCandidateTotal = 0;
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
+
+        if (edit_index == (int)CHANNEL_NAME_MAX_BYTES)
+        {
+            edit_index = MENU_MemNamePrevSlotIndex(edit_index);
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
+
+        if (edit_index >= 0 && edit_index < (int)CHANNEL_NAME_MAX_BYTES)
+        {
+            uint8_t c = (uint8_t)edit[edit_index];
+            if (c != MEM_NAME_EDIT_PAD)
+            {
+                if (c >= 0xE4 && c <= 0xEF)
+                {
+                    edit[edit_index]     = MEM_NAME_EDIT_PAD;
+                    edit[edit_index + 1] = MEM_NAME_EDIT_PAD;
+                    edit[edit_index + 2] = MEM_NAME_EDIT_PAD;
+                }
+                else
+                {
+                    edit[edit_index] = MEM_NAME_EDIT_PAD;
+                }
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+            }
+            else if (edit_index > 0)
+            {
+                edit_index = MENU_MemNamePrevSlotIndex(edit_index);
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+            }
+            else
+            {
+                edit_index = -1;
+                gIsInSubMenu = false;
+                gInputBoxIndex = 0;
+                gFlagRefreshSetting = true;
+#ifdef ENABLE_VOICE
+                gAnotherVoiceID = VOICE_ID_CANCEL;
+#endif
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+            }
+        }
+        return;
+    }
+#else
     if (MENU_IsEditingName())
     {
         if (!bKeyPressed)
@@ -1819,6 +2410,7 @@ Skip:
 
         return;
     }
+#endif
 
     if (bKeyHeld || !bKeyPressed)
         return;
@@ -1831,7 +2423,20 @@ Skip:
         {
             if (gInputBoxIndex == 0 || UI_MENU_GetCurrentMenuId() != MENU_OFFSET)
             {
+#ifdef ENABLE_CHINESE
+                BACKLIGHT_TurnOn();
+                gAskForConfirmation = 0;
+                gIsInSubMenu        = false;
+                gInputBoxIndex      = 0;
+                gFlagRefreshSetting = true;
+#ifdef ENABLE_VOICE
+                gAnotherVoiceID = VOICE_ID_CANCEL;
+#endif
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+#else
                 goto Skip;
+#endif
             }
             else
             {
@@ -1892,8 +2497,13 @@ Skip:
 
 static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
 {
+#ifdef ENABLE_CHINESE
+    if (bKeyHeld || !bKeyPressed)
+        return;
+#else
     if (!bKeyPressed || (bKeyHeld && (!MENU_IsEditingName() || gAskForConfirmation)))
         return;
+#endif
     
     gBeepToPlay           = BEEP_1KHZ_60MS_OPTIONAL;
     gRequestDisplayScreen = DISPLAY_MENU;
@@ -1936,6 +2546,9 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
         {
             gInputBoxIndex      = 0;
             edit_index          = -1;
+#ifdef ENABLE_CHINESE
+            gMemNameCandidateCount = 0;
+#endif
         }
 
         return;
@@ -1950,6 +2563,29 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
 
             SETTINGS_FetchChannelName(edit, gSubMenuSelection);
 
+#ifdef ENABLE_CHINESE
+            edit_index = (int)strlen(edit);
+            while (edit_index < (int)CHANNEL_NAME_MAX_BYTES)
+                edit[edit_index++] = MEM_NAME_EDIT_PAD;
+            edit[edit_index] = 0;
+            edit_index = 0;
+
+            memcpy(edit_original, edit, sizeof(edit_original));
+            if (gUiLanguage == UI_LANGUAGE_CN)
+            {
+                gMemNameInputMode = MEM_NAME_INPUT_PINYIN;
+                gCNCandidateCount = 0;
+                gCNCandidateOffset = 0;
+                gCNCandidateTotal = 0;
+                MENU_PinyinReset();
+            }
+            else
+            {
+                gMemNameInputMode = MEM_NAME_INPUT_LOWER;
+            }
+            gMemNameCandidateCount = 0;
+            gMemNameSymbolPage = 0;
+#else
             // pad the channel name out with ' '
             size_t len = strlen(edit);
             if (len < 10)
@@ -1965,10 +2601,62 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
 
             // make a copy so we can test for change when exiting the menu item
             memcpy(edit_original, edit, sizeof(edit_original));
-
+#endif
             return;
         }
-        else
+#ifdef ENABLE_CHINESE
+        if (gUiLanguage == UI_LANGUAGE_CN)
+        {
+            if (gPinyinCandidateCount > 0 && gCNCandidateCount == 0)
+            {
+                strcpy(gPinyinBuffer, gPinyinCandidates[gPinyinCandidateIndex]);
+                gPinyinLen = (uint8_t)strlen(gPinyinBuffer);
+                gCNCandidateOffset = 0;
+                MENU_PinyinSearch();
+                gPinyinCandidateCount = 0;
+                gPinyinCandidateIndex = 0;
+                gPinyinCandidateOffset = 0;
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+            }
+            if (gCNCandidateCount > 0)
+            {
+                gCNCandidateCount = 0;
+                gCNCandidateOffset = 0;
+                gCNCandidateTotal = 0;
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+            }
+            if (gPinyinDigitLen > 0)
+            {
+                gPinyinDigitLen = 0;
+                gPinyinDigitSeq[0] = 0;
+                gPinyinCandidateCount = 0;
+                gPinyinCandidateIndex = 0;
+                gPinyinCandidateOffset = 0;
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+            }
+        }
+        if (edit_index < (int)CHANNEL_NAME_MAX_BYTES)
+        {
+            edit_index = MENU_MemNameNextSlotIndex(edit_index);
+
+            if (edit_index >= (int)CHANNEL_NAME_MAX_BYTES)
+            {
+                edit_index = (int)CHANNEL_NAME_MAX_BYTES;
+                gFlagAcceptSetting  = false;
+                gAskForConfirmation = 0;
+                if (memcmp(edit_original, edit, sizeof(edit_original)) == 0)
+                    gIsInSubMenu = false;
+            }
+            else
+            {
+                gRequestDisplayScreen = DISPLAY_MENU;
+                return;
+            }
+        }
+#else
         if (edit_index >= 0 && edit_index < 10)
         {   // editing the channel name characters
             edit_last_key = 255;
@@ -1988,6 +2676,7 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
                 gIsInSubMenu = false;
             }
         }
+#endif
     }
 
     // exiting the sub menu
@@ -2054,6 +2743,23 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
 
 static void MENU_Key_STAR(const bool bKeyPressed, const bool bKeyHeld)
 {
+#ifdef ENABLE_CHINESE
+    if (bKeyHeld || !bKeyPressed)
+        return;
+
+    gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+
+    if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && edit_index >= 0)
+    {
+        if (edit_index < (int)CHANNEL_NAME_MAX_BYTES)
+        {
+            edit[edit_index] = '-';
+            gMemNameCandidateCount = 0;
+            gRequestDisplayScreen = DISPLAY_MENU;
+        }
+        return;
+    }
+#else
     if (!bKeyPressed)
         return;
 
@@ -2075,6 +2781,7 @@ static void MENU_Key_STAR(const bool bKeyPressed, const bool bKeyHeld)
 
     if (bKeyHeld)
         return;
+#endif
 
     RADIO_SelectVfos();
 
@@ -2128,6 +2835,45 @@ static void MENU_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
         Direction = -Direction;
     }
 
+#ifdef ENABLE_CHINESE
+    if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && gUiLanguage == UI_LANGUAGE_CN && gIsInSubMenu &&
+        edit_index >= 0)
+    {
+        if (gMemNameInputMode == MEM_NAME_INPUT_PINYIN && gPinyinCandidateCount > 0 &&
+            gCNCandidateCount == 0 && bKeyPressed && Direction != 0)
+        {
+            gPinyinCandidateIndex = (uint8_t)NUMBER_AddWithWraparound(
+                gPinyinCandidateIndex, Direction > 0 ? 1 : -1, 0, gPinyinCandidateCount - 1u);
+            MENU_EnsurePinyinPageVisible();
+            gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
+        if (gMemNameInputMode == MEM_NAME_INPUT_PINYIN && gCNCandidateCount > 0 &&
+            gCNCandidateTotal > CN_CANDIDATE_MAX && bKeyPressed && Direction != 0)
+        {
+            const uint8_t per_page = CN_CANDIDATE_MAX;
+            const uint8_t pages = (uint8_t)((gCNCandidateTotal + per_page - 1u) / per_page);
+            const uint8_t cur_page = (uint8_t)(gCNCandidateOffset / per_page);
+            const uint8_t new_page = (uint8_t)NUMBER_AddWithWraparound(cur_page, Direction > 0 ? 1 : -1, 0, pages - 1u);
+            gCNCandidateOffset = (uint8_t)(new_page * per_page);
+            MENU_PinyinSearch();
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
+    }
+
+    if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && gIsInSubMenu && edit_index >= 0)
+    {
+        if (gMemNameInputMode == MEM_NAME_INPUT_SYMBOL && bKeyPressed && Direction != 0)
+        {
+            MENU_MemNameFlipSymbolPage((int8_t)Direction);
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
+        return;
+    }
+#else
     if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && gIsInSubMenu && edit_index >= 0)
     {   // change the character
         if (edit_index < 10 && Direction != 0)
@@ -2150,6 +2896,7 @@ static void MENU_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
         }
         return;
     }
+#endif
 
     if (SCANNER_IsScanning()) {
         return;
@@ -2268,6 +3015,46 @@ void MENU_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         case KEY_MENU:
             MENU_Key_MENU(bKeyPressed, bKeyHeld);
             break;
+#ifdef ENABLE_CHINESE
+        case KEY_SIDE1:
+        case KEY_SIDE2:
+            if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && gIsInSubMenu && edit_index >= 0 &&
+                gMemNameInputMode == MEM_NAME_INPUT_SYMBOL && !bKeyHeld && bKeyPressed)
+            {
+                int8_t delta = (Key == KEY_SIDE2) ? 1 : -1;
+                if (!gEeprom.SET_NAV)
+                    delta = -delta;
+                gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+                MENU_MemNameFlipSymbolPage(delta);
+                gRequestDisplayScreen = DISPLAY_MENU;
+                break;
+            }
+            if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && gIsInSubMenu && edit_index >= 0 &&
+                gUiLanguage == UI_LANGUAGE_CN && gMemNameInputMode == MEM_NAME_INPUT_PINYIN &&
+                !bKeyHeld && bKeyPressed)
+            {
+                if (gCNCandidateCount > 0 && gCNCandidateTotal > CN_CANDIDATE_MAX)
+                {
+                    int8_t delta = (Key == KEY_SIDE2) ? 1 : -1;
+                    if (!gEeprom.SET_NAV)
+                        delta = -delta;
+                    const uint8_t per_page = CN_CANDIDATE_MAX;
+                    const uint8_t pages = (uint8_t)((gCNCandidateTotal + per_page - 1u) / per_page);
+                    const uint8_t cur_page = (uint8_t)(gCNCandidateOffset / per_page);
+                    const uint8_t new_page = (uint8_t)NUMBER_AddWithWraparound(cur_page, delta, 0, pages - 1u);
+                    gCNCandidateOffset = (uint8_t)(new_page * per_page);
+                    MENU_PinyinSearch();
+                    gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+                    gRequestDisplayScreen = DISPLAY_MENU;
+                    break;
+                }
+            }
+            if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && gIsInSubMenu && edit_index >= 0)
+                break;
+            if (!bKeyHeld && bKeyPressed)
+                gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            break;
+#endif
         case KEY_UP:
         case KEY_DOWN:
             MENU_Key_UP_DOWN(bKeyPressed, bKeyHeld, Key == KEY_UP ? 1 : -1);
@@ -2280,7 +3067,47 @@ void MENU_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             break;
         case KEY_F:
             if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && edit_index >= 0)
-            {   // currently editing the channel name
+            {
+#ifdef ENABLE_CHINESE
+                if (!bKeyHeld && bKeyPressed)
+                {
+                    gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+                    MENU_PinyinReset();
+                    gMemNameCandidateCount = 0;
+                    /* CN: PY→a→A→1→,→PY；EN: a→A→1→,→a  (# / F key) */
+                    switch (gMemNameInputMode)
+                    {
+                        case MEM_NAME_INPUT_PINYIN:
+                            gMemNameInputMode = MEM_NAME_INPUT_LOWER;
+                            break;
+                        case MEM_NAME_INPUT_LOWER:
+                            gMemNameInputMode = MEM_NAME_INPUT_UPPER;
+                            break;
+                        case MEM_NAME_INPUT_UPPER:
+                            gMemNameInputMode = MEM_NAME_INPUT_DIGIT;
+                            break;
+                        case MEM_NAME_INPUT_DIGIT:
+                            gMemNameInputMode = MEM_NAME_INPUT_SYMBOL;
+                            break;
+                        case MEM_NAME_INPUT_SYMBOL:
+                            gMemNameInputMode = (gUiLanguage == UI_LANGUAGE_CN)
+                                ? MEM_NAME_INPUT_PINYIN
+                                : MEM_NAME_INPUT_LOWER;
+                            break;
+                        default:
+                            gMemNameInputMode = (gUiLanguage == UI_LANGUAGE_CN)
+                                ? MEM_NAME_INPUT_PINYIN
+                                : MEM_NAME_INPUT_LOWER;
+                            break;
+                    }
+                    if (gMemNameInputMode == MEM_NAME_INPUT_SYMBOL)
+                    {
+                        gMemNameSymbolPage = 0;
+                        MENU_BuildMemNameSymbolCandidates();
+                    }
+                    gRequestDisplayScreen = DISPLAY_MENU;
+                }
+#else
                 if (!bKeyPressed)
                     break;
 
@@ -2296,6 +3123,7 @@ void MENU_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
                     gRequestDisplayScreen = DISPLAY_MENU;
                 }
+#endif
                 break;
             }
 

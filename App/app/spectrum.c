@@ -1605,7 +1605,7 @@ static void DrawStatus()
 static void ShowChannelName(uint32_t f)
 {
     static uint32_t channelF = 0;
-    static char channelName[12]; 
+    static char channelName[16]; 
     f = NormalizeScanFrequency(f);
 
     // Channel name starts at x=43 (fixed), leaving room for the dBm
@@ -1626,6 +1626,11 @@ static void ShowChannelName(uint32_t f)
                     if (SETTINGS_FetchChannelFrequency(i) == channelF)
                     {
                         SETTINGS_FetchChannelName(channelName, i);
+#ifdef ENABLE_CHINESE
+                        /* Status line is Latin-only; CJK names fall back to CH#. */
+                        if (SETTINGS_ChannelNameHasCjkUtf8(channelName))
+                            sprintf(channelName, "CH%u", i + 1);
+#endif
                         break;
                     }
                 }

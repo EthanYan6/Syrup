@@ -35,6 +35,7 @@
 #endif
 #ifdef ENABLE_FMRADIO
     #include "app/fm.h"
+    #include "ui/fmradio.h"
 #endif
 #include "app/generic.h"
 #include "app/main.h"
@@ -1633,6 +1634,9 @@ void APP_TimeSlice10ms(void)
 
 
     UI_SyrupHome_Tick10ms();
+#ifdef ENABLE_FMRADIO
+    UI_FM_Tick10ms();
+#endif
 
     bool gUpdateDisplayCurrent = gUpdateDisplay;
     bool gUpdateStatusCurrent  = gUpdateStatus;

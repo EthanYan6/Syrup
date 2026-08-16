@@ -165,8 +165,9 @@ enum
     MENU_MLONG,
     MENU_BATTYP,
 #if defined(ENABLE_FEAT_F4HWN) && defined(ENABLE_FEAT_F4HWN_LOGO_SAV)
-    MENU_SET_SAV
+    MENU_SET_SAV,
 #endif
+    MENU_LANGUAGE
 };
 
 #ifdef ENABLE_FEAT_F4HWN_MENU_CAT
@@ -264,6 +265,7 @@ extern const char* const            gSubMenu_RX_TX[4];
 extern const char* const            gSubMenu_BAT_TXT[3];
 extern const char* const            gSubMenu_BATTYP[5];
 extern const char* const            gSubMenu_SET_NAV[2];
+extern const char                   gSubMenu_LANGUAGE[2][8];
 
 #ifndef ENABLE_FEAT_F4HWN
     extern const char* const        gSubMenu_SCRAMBLER[11];
@@ -287,9 +289,46 @@ extern int32_t           gSubMenuSelection;
 extern char              edit_original[17];
 extern char              edit[17];
 extern int               edit_index;
+#ifndef ENABLE_CHINESE
 extern bool              edit_is_uppercase;
+#endif
+
+#ifdef ENABLE_CHINESE
+enum {
+    MEM_NAME_INPUT_LOWER = 0,
+    MEM_NAME_INPUT_UPPER,
+    MEM_NAME_INPUT_DIGIT,
+    MEM_NAME_INPUT_SYMBOL,
+    MEM_NAME_INPUT_PINYIN
+};
+/* Edit pad placeholder; do not use '_' (symbol mode may insert a real underscore) */
+#define MEM_NAME_EDIT_PAD ' '
+extern uint8_t           gMemNameInputMode;
+extern uint8_t           gMemNameCandidateCount;
+extern char              gMemNameCandidates[6];
+extern uint8_t           gMemNameSymbolPage;
+extern const char        gMemNameSymbolCharset[];
+extern const uint8_t     gMemNameSymbolCharsetCount;
+
+#define PINYIN_MAX_LEN      6
+#define CN_CANDIDATE_MAX    6
+#define PINYIN_CAND_MAX     16
+extern char              gPinyinBuffer[PINYIN_MAX_LEN + 1];
+extern uint8_t           gPinyinLen;
+extern uint16_t          gCNCandidates[CN_CANDIDATE_MAX];
+extern uint8_t           gCNCandidateCount;
+extern uint8_t           gCNCandidateOffset;
+extern uint8_t           gCNCandidateTotal;
+extern char              gPinyinDigitSeq[PINYIN_MAX_LEN + 1];
+extern uint8_t           gPinyinDigitLen;
+extern char              gPinyinCandidates[PINYIN_CAND_MAX][PINYIN_MAX_LEN + 1];
+extern uint8_t           gPinyinCandidateCount;
+extern uint8_t           gPinyinCandidateIndex;
+extern uint8_t           gPinyinCandidateOffset;
+#endif
 
 void UI_DisplayMenu(void);
+const char *UI_MENU_GetMenuTitle(const t_menu_item *item);
 int UI_MENU_GetCurrentMenuId();
 uint8_t UI_MENU_GetMenuIdx(uint8_t id);
 uint8_t UI_MENU_GetViewPos(uint8_t id);

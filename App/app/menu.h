@@ -32,6 +32,10 @@ void MENU_StartCssScan(void);
 void MENU_CssScanFound(void);
 void MENU_StopCssScan(void);
 
+#ifdef ENABLE_CHINESE
+void MENU_EnsurePinyinPageVisible(void);
+#endif
+
 void MENU_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld);
 
 #endif

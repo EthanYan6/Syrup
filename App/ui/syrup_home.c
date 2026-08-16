@@ -6,6 +6,7 @@
 #ifdef ENABLE_AM_FIX
 #include "am_fix.h"
 #endif
+#include "bitmaps.h"
 #include "dcs.h"
 #include "driver/bk4819.h"
 #include "driver/gpio.h"
@@ -13,21 +14,29 @@
 #include "external/printf/printf.h"
 #include "font.h"
 #include "functions.h"
+#include "helper/battery.h"
 #include "misc.h"
 #include "radio.h"
 #include "settings.h"
+#include "ui/battery.h"
 #include "ui/helper.h"
 #include "ui/inputbox.h"
 #include "ui/ui.h"
 
-/* Layout: 56px framebuffer — wave on top, two 16px channel rows below */
+/* Layout: full 64px screen — wave uses former status band; two taller channel rows */
+#define SH_STATUS_H        8u
+#define SH_SCREEN_H        64u
 #define SH_WAVE_Y          0u
 #define SH_WAVE_H          20u
-#define SH_CH_H            16u
+#define SH_CH_H            20u  /* was 16; +4 from half of freed status */
 #define SH_CH_GAP          2u
-#define SH_CH0_Y           22u
-#define SH_CH1_Y           (SH_CH0_Y + SH_CH_H + SH_CH_GAP)
-#define SH_FB_H            ((uint8_t)(FRAME_LINES * 8u))
+#define SH_CH0_Y           (SH_WAVE_Y + SH_WAVE_H + SH_CH_GAP) /* 22 */
+#define SH_CH1_Y           (SH_CH0_Y + SH_CH_H + SH_CH_GAP)     /* 44 */
+#define SH_NAME_Y_OFF      0u
+#define SH_PARAM_Y_OFF     8u  /* mod/pwr/sql — 4px above former +12 */
+#define SH_TONE_Y_OFF      14u /* R:/T: subtones under params */
+#define SH_FREQ_Y_OFF      12u /* right-column frequency (unchanged) */
+#define SH_RIGHT_X_INSET   2u  /* right column shifted left */
 #define SH_GAP_PX          2u
 
 /* RX: stacked blocks — longer (wider) bricks; vertical pack fills SH_WAVE_H */
@@ -53,11 +62,14 @@
 #define SH_METER_PAD_Y       1u
 #define SH_METER_TEXT_H      6u   /* gFont3x5 glyph height */
 
-/* Last-RX placeholder: speaker icon + channel name, centered in wave row */
+/* Last-RX placeholder: speaker + name (top); battery / lock (bottom) */
 #define SH_SPK_W             12u
 #define SH_SPK_H             8u
 #define SH_SPK_GAP           3u
 #define SH_NAME_MAX          10u
+#define SH_PH_BAT_H          8u   /* battery / lock / small-font text height */
+#define SH_PH_LINE_GAP       2u   /* gap between name row and battery row */
+#define SH_PH_ROW_GAP        2u   /* gap between lock, bat, text */
 
 static uint8_t  s_rx_band[SH_RX_COLS]; /* current EQ body height */
 static uint8_t  s_rx_tip[SH_RX_COLS];  /* falling peak brick */
@@ -90,33 +102,113 @@ static const uint8_t s_spk_bitmap[SH_SPK_W] = {
 	0b10011001,
 };
 
+/* Screen-absolute pixel (0..63): y 0..7 → status line, else framebuffer */
 static void draw_pixel(uint8_t x, uint8_t y, bool black)
 {
-	if (x >= LCD_WIDTH || y >= SH_FB_H)
+	if (x >= LCD_WIDTH || y >= SH_SCREEN_H)
 		return;
-	UI_DrawPixelBuffer(gFrameBuffer, x, y, black);
+	if (y < SH_STATUS_H) {
+		const uint8_t pattern = (uint8_t)(1u << (y % 8u));
+		if (black)
+			gStatusLine[x] |= pattern;
+		else
+			gStatusLine[x] &= (uint8_t)~pattern;
+		return;
+	}
+	UI_DrawPixelBuffer(gFrameBuffer, x, (uint8_t)(y - SH_STATUS_H), black);
+}
+
+static uint8_t fb_y(uint8_t screen_y)
+{
+	return (screen_y >= SH_STATUS_H) ? (uint8_t)(screen_y - SH_STATUS_H) : 0u;
 }
 
 static void fill_rect(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, bool black)
 {
-	for (uint8_t y = y0; y <= y1 && y < SH_FB_H; y++) {
+	for (uint8_t y = y0; y <= y1 && y < SH_SCREEN_H; y++) {
 		for (uint8_t x = x0; x <= x1 && x < LCD_WIDTH; x++)
 			draw_pixel(x, y, black);
 	}
 }
 
+#ifdef ENABLE_CHINESE
+static bool is_cjk_utf8(const char *p)
+{
+	const uint8_t c = (uint8_t)p[0];
+	return (c >= 0xE4u && c <= 0xEFu);
+}
+
+static uint16_t utf8_to_unicode(const char *p)
+{
+	return (uint16_t)((((uint8_t)p[0] & 0x0Fu) << 12) |
+	                   (((uint8_t)p[1] & 0x3Fu) << 6) |
+	                   ((uint8_t)p[2] & 0x3Fu));
+}
+
+static void draw_cjk_glyph_screen(uint16_t unicode, uint8_t x, uint8_t y_top)
+{
+	int16_t  spi_index;
+	uint16_t spi_bitmap[12];
+
+	spi_index = SETTINGS_CNCharToIndex(unicode);
+	if (spi_index < 0)
+		return;
+	SETTINGS_ReadCNFontBitmap((uint16_t)spi_index, spi_bitmap);
+	for (uint8_t row = 0; row < 12u; row++) {
+		const uint16_t row_data = spi_bitmap[row];
+		for (uint8_t col = 0; col < 12u; col++) {
+			if (row_data & (uint16_t)(0x8000u >> col))
+				draw_pixel((uint8_t)(x + col), (uint8_t)(y_top + row), true);
+		}
+	}
+}
+#endif
+
 static uint8_t small_text_width(const char *text)
 {
+#ifdef ENABLE_CHINESE
+	return (uint8_t)UI_SmallStringPixelWidth(text);
+#else
 	const uint8_t char_w = (uint8_t)ARRAY_SIZE(gFontSmall[0]);
 	const uint8_t pitch  = (uint8_t)(char_w + 1u);
 	return (uint8_t)(strlen(text) * pitch);
+#endif
 }
 
 static uint8_t draw_small_text(const char *text, uint8_t x, uint8_t y_top, bool black)
 {
+	const uint8_t left = x;
+#ifdef ENABLE_CHINESE
+	size_t i = 0;
+	while (text[i] != '\0') {
+		if (is_cjk_utf8(&text[i])) {
+			(void)black;
+			draw_cjk_glyph_screen(utf8_to_unicode(&text[i]), x, y_top);
+			x = (uint8_t)(x + 12u + 1u);
+			i += 3u;
+		} else {
+			const char c = text[i];
+			if (c > ' ' && c < 127) {
+				const unsigned int index = (unsigned int)(c - ' ' - 1);
+				const uint8_t *glyph = gFontSmall[index];
+				const uint8_t gx = (uint8_t)(x + 1u);
+				const uint8_t char_w = (uint8_t)ARRAY_SIZE(gFontSmall[0]);
+				for (uint8_t col = 0; col < char_w; col++) {
+					uint8_t bits = glyph[col];
+					for (uint8_t row = 0; row < 8u; row++) {
+						if (bits & (uint8_t)(1u << row))
+							draw_pixel((uint8_t)(gx + col), (uint8_t)(y_top + row), black);
+					}
+				}
+			}
+			x = (uint8_t)(x + (uint8_t)ARRAY_SIZE(gFontSmall[0]) + 1u);
+			i++;
+		}
+	}
+#else
+	{
 	const uint8_t char_w = (uint8_t)ARRAY_SIZE(gFontSmall[0]);
 	const uint8_t pitch  = (uint8_t)(char_w + 1u);
-	const uint8_t left   = x;
 
 	for (size_t i = 0; text[i] != '\0'; i++) {
 		const char c = text[i];
@@ -134,13 +226,16 @@ static uint8_t draw_small_text(const char *text, uint8_t x, uint8_t y_top, bool 
 		}
 		x = (uint8_t)(x + pitch);
 	}
+	}
+#endif
 	return left;
 }
 
 static uint8_t draw_right_small(const char *text, uint8_t y_top)
 {
 	const uint8_t w = small_text_width(text);
-	const uint8_t x = (w >= LCD_WIDTH) ? 0u : (uint8_t)(LCD_WIDTH - w);
+	const uint8_t inset = SH_RIGHT_X_INSET;
+	const uint8_t x = (w + inset >= LCD_WIDTH) ? 0u : (uint8_t)(LCD_WIDTH - w - inset);
 	draw_small_text(text, x, y_top, true);
 	return x;
 }
@@ -154,7 +249,8 @@ static uint8_t draw_param(const char *text, uint8_t x, uint8_t y, bool black)
 {
 	if (text == NULL || text[0] == '\0')
 		return x;
-	GUI_DisplaySmallest(text, x, y, false, black);
+	/* 3x5 helper is framebuffer-relative; channel rows sit below status */
+	GUI_DisplaySmallest(text, x, fb_y(y), false, black);
 	return (uint8_t)(x + smallest_width(text) + SH_GAP_PX);
 }
 
@@ -166,10 +262,11 @@ static const char *power_letter(uint8_t power)
 	return names[power];
 }
 
-static void format_tx_tone(char *out, size_t out_sz, const VFO_Info_t *vfo)
+static void format_tone(char *out, size_t out_sz, const FREQ_Config_t *pConfig)
 {
-	const FREQ_Config_t *pConfig = vfo->pTX;
 	out[0] = '\0';
+	if (pConfig == NULL)
+		return;
 	switch (pConfig->CodeType) {
 	case CODE_TYPE_CONTINUOUS_TONE:
 		snprintf(out, out_sz, "%u.%u",
@@ -198,10 +295,11 @@ static void invert_channel_row(uint8_t vfo)
 			draw_pixel(x, y_bar, true);
 	}
 
-	for (uint8_t y = y0; y <= y1 && y < SH_FB_H; y++) {
+	for (uint8_t y = y0; y <= y1 && y < SH_SCREEN_H; y++) {
 		for (uint8_t x = 0; x < LCD_WIDTH; x++) {
-			const uint8_t pattern = (uint8_t)(1u << (y % 8u));
-			gFrameBuffer[y / 8u][x] ^= pattern;
+			const uint8_t sy = fb_y(y);
+			const uint8_t pattern = (uint8_t)(1u << (sy % 8u));
+			gFrameBuffer[sy / 8u][x] ^= pattern;
 		}
 	}
 }
@@ -226,15 +324,18 @@ static void draw_dtmf_live(uint8_t y, uint8_t x_right, const char *digits)
 		dig_off++;
 	}
 	snprintf(buf, sizeof(buf), "%s%s", prefix, digits + dig_off);
-	GUI_DisplaySmallest(buf, x_left, y, false, true);
+	GUI_DisplaySmallest(buf, x_left, fb_y(y), false, true);
 }
 
 static void draw_channel_row(uint8_t vfo)
 {
 	const VFO_Info_t *info = &gEeprom.VfoInfo[vfo];
 	const uint8_t top = (vfo == 0u) ? SH_CH0_Y : SH_CH1_Y;
-	const uint8_t y0  = (uint8_t)(top + 1u);
-	const uint8_t y1  = (uint8_t)(top + 8u);
+	const uint8_t name_y = (uint8_t)(top + SH_NAME_Y_OFF);
+	const uint8_t badge_y = (uint8_t)(top + 1u);
+	const uint8_t param_y = (uint8_t)(top + SH_PARAM_Y_OFF);
+	const uint8_t tone_y = (uint8_t)(top + SH_TONE_Y_OFF);
+	const uint8_t freq_y = (uint8_t)(top + SH_FREQ_Y_OFF);
 	const bool transmitting =
 		(gCurrentFunction == FUNCTION_TRANSMIT && gEeprom.TX_VFO == vfo);
 	const bool show_dtmf =
@@ -243,27 +344,23 @@ static void draw_channel_row(uint8_t vfo)
 		vfo == gEeprom.TX_VFO;
 
 	char String[22];
-	char tone[12];
+	char rx_tone[12];
+	char tx_tone[12];
 	char freq_str[16];
 	uint8_t x = 2u;
 
-	/* CH badge (inverted) */
+	/* CH badge (inverted) — top line left; tone moved to row 3 */
 	snprintf(String, sizeof(String), "CH%u", (unsigned)(vfo + 1u));
 	{
 		const uint8_t ch_w = smallest_width(String);
 		const uint8_t text_x = x;
 		const uint8_t box_x0 = (uint8_t)(text_x - 1u);
 		const uint8_t box_x1 = (uint8_t)(text_x + ch_w);
-		const uint8_t box_y0 = (uint8_t)(y0 - 1u);
-		const uint8_t box_y1 = (uint8_t)(y0 + 5u);
+		const uint8_t box_y0 = (uint8_t)(badge_y - 1u);
+		const uint8_t box_y1 = (uint8_t)(badge_y + 5u);
 		fill_rect(box_x0, box_y0, box_x1, box_y1, true);
-		GUI_DisplaySmallest(String, text_x, y0, false, false);
-		x = (uint8_t)(box_x1 + 1u + SH_GAP_PX);
+		GUI_DisplaySmallest(String, text_x, fb_y(badge_y), false, false);
 	}
-
-	format_tx_tone(tone, sizeof(tone), info);
-	if (tone[0] != '\0')
-		draw_param(tone, x, y0, true);
 
 	/* frequency string (right column, also DTMF bound) */
 	if (gInputBoxIndex > 0 && gEeprom.TX_VFO == vfo) {
@@ -282,13 +379,29 @@ static void draw_channel_row(uint8_t vfo)
 	}
 
 	if (show_dtmf) {
-		draw_dtmf_live(y1, (uint8_t)(LCD_WIDTH - small_text_width(freq_str)), gDTMF_RX_live);
+		draw_dtmf_live(param_y,
+		               (uint8_t)(LCD_WIDTH - SH_RIGHT_X_INSET - small_text_width(freq_str)),
+		               gDTMF_RX_live);
 	} else {
+		/* row 2: modulation, power, squelch */
 		x = 1u;
-		x = draw_param(gModulationStr[info->Modulation], x, y1, true);
-		x = draw_param(power_letter(info->OUTPUT_POWER), x, y1, true);
+		x = draw_param(gModulationStr[info->Modulation], x, param_y, true);
+		x = draw_param(power_letter(info->OUTPUT_POWER), x, param_y, true);
 		snprintf(String, sizeof(String), "%u", (unsigned)gEeprom.SQUELCH_LEVEL);
-		draw_param(String, x, y1, true);
+		draw_param(String, x, param_y, true);
+
+		/* row 3: RX + TX subtones (omit when OFF) */
+		format_tone(rx_tone, sizeof(rx_tone), info->pRX);
+		format_tone(tx_tone, sizeof(tx_tone), info->pTX);
+		x = 1u;
+		if (rx_tone[0] != '\0') {
+			snprintf(String, sizeof(String), "R:%s", rx_tone);
+			x = draw_param(String, x, tone_y, true);
+		}
+		if (tx_tone[0] != '\0') {
+			snprintf(String, sizeof(String), "T:%s", tx_tone);
+			draw_param(String, x, tone_y, true);
+		}
 	}
 
 	/* name / VFO state on the right of the top line */
@@ -307,20 +420,24 @@ static void draw_channel_row(uint8_t vfo)
 				snprintf(String, sizeof(String), "VFO-%u", (unsigned)(vfo + 1u));
 		}
 	}
+#ifdef ENABLE_CHINESE
+	String[CHANNEL_NAME_MAX_BYTES] = 0;
+#else
 	String[10] = 0;
+#endif
 	{
-		const uint8_t name_left = draw_right_small(String, top);
+		const uint8_t name_left = draw_right_small(String, name_y);
 		if (IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo])) {
 			char num[6];
 			snprintf(num, sizeof(num), "%u",
 			         (unsigned)(gEeprom.ScreenChannel[vfo] + 1u));
 			const uint8_t num_w = smallest_width(num);
 			if (num_w + 2u < name_left)
-				GUI_DisplaySmallest(num, (uint8_t)(name_left - 2u - num_w), top, false, true);
+				GUI_DisplaySmallest(num, (uint8_t)(name_left - 2u - num_w), fb_y(name_y), false, true);
 		}
 	}
 
-	draw_right_small(freq_str, (uint8_t)(top + 8u));
+	draw_right_small(freq_str, freq_y);
 }
 
 /* TX: map mic amplitude onto full half-row height with large dynamic range */
@@ -510,6 +627,62 @@ static void clear_wave_area(void)
 	fill_rect(0, SH_WAVE_Y, LCD_WIDTH - 1u, y1, false);
 }
 
+/* Center a short hint in the bar/wave row (low battery / keypad unlock) */
+static void draw_wave_centered_message(const char *text, bool key_lock_hint)
+{
+	uint8_t name_w;
+	uint8_t text_h;
+	uint8_t x;
+	uint8_t y;
+
+	(void)key_lock_hint;
+	clear_wave_area();
+
+#ifdef ENABLE_CHINESE
+	text_h = SETTINGS_ChannelNameHasCjkUtf8(text) ? 12u : 8u;
+#else
+	text_h = 8u;
+#endif
+	name_w = small_text_width(text);
+	if (name_w >= LCD_WIDTH)
+		x = 0u;
+	else
+		x = (uint8_t)((LCD_WIDTH - name_w) / 2u);
+	y = (uint8_t)(SH_WAVE_Y + (SH_WAVE_H - text_h) / 2u);
+	draw_small_text(text, x, y, true);
+}
+
+static bool wave_overlay_active(void)
+{
+	if (gLowBattery && !gLowBatteryConfirmed)
+		return true;
+	if (gEeprom.KEY_LOCK && gKeypadLocked > 0)
+		return true;
+	return false;
+}
+
+static void draw_wave_overlay(void)
+{
+	if (gLowBattery && !gLowBatteryConfirmed) {
+		const char *msg = "LOW BATTERY";
+#ifdef ENABLE_CHINESE
+		if (gUiLanguage == UI_LANGUAGE_CN)
+			msg = "\xe4\xbd\x8e\xe7\x94\xb5\xe9\x87\x8f"; /* 低电量 */
+#endif
+		draw_wave_centered_message(msg, false);
+		return;
+	}
+
+	if (gEeprom.KEY_LOCK && gKeypadLocked > 0) {
+		const char *msg = "UNLOCK KEYBOARD";
+#ifdef ENABLE_CHINESE
+		if (gUiLanguage == UI_LANGUAGE_CN)
+			msg = "\xe9\x95\xbf\xe6\x8c\x89#\xe8\xa7\xa3\xe9\x94\x81"; /* 长按#解锁 */
+#endif
+		draw_wave_centered_message(msg, true);
+	}
+}
+
 /* Pack block b (0=bottom) into the full wave row so max height reaches SH_WAVE_Y */
 static void rx_block_ys(uint8_t b_from_bottom, uint8_t *y0, uint8_t *y1)
 {
@@ -565,7 +738,7 @@ static void draw_s_meter_label(void)
 	else
 		text_x = (uint8_t)((LCD_WIDTH - text_w) / 2u);
 
-	/* flush under status bar (framebuffer y=0); only a small center strip */
+	/* flush under screen top; only a small center strip */
 	text_y = (uint8_t)(SH_WAVE_Y + SH_METER_PAD_Y);
 
 	box_x0 = (text_x > SH_METER_PAD_X) ? (uint8_t)(text_x - SH_METER_PAD_X) : 0u;
@@ -579,7 +752,10 @@ static void draw_s_meter_label(void)
 
 	/* tight blank plate only behind the digits — not a full-width row */
 	fill_rect(box_x0, box_y0, box_x1, box_y1, false);
-	GUI_DisplaySmallest(buf, text_x, text_y, false, true);
+	if (text_y < SH_STATUS_H)
+		GUI_DisplaySmallest(buf, text_x, text_y, true, true);
+	else
+		GUI_DisplaySmallest(buf, text_x, fb_y(text_y), false, true);
 }
 
 static void draw_rx_tip_cap(uint8_t x0, uint8_t tip_level)
@@ -675,7 +851,14 @@ static void format_last_rx_name(char *out, size_t out_sz)
 			snprintf(out, out_sz, "VFO-%u",
 			         (unsigned)(s_last_rx_vfo + 1u));
 	}
+#ifdef ENABLE_CHINESE
+	if (out_sz > CHANNEL_NAME_MAX_BYTES)
+		out[CHANNEL_NAME_MAX_BYTES] = '\0';
+	else if (out_sz > 0)
+		out[out_sz - 1u] = '\0';
+#else
 	out[SH_NAME_MAX] = '\0';
+#endif
 }
 
 static void draw_spk_bitmap(uint8_t x, uint8_t y_top)
@@ -689,22 +872,138 @@ static void draw_spk_bitmap(uint8_t x, uint8_t y_top)
 	}
 }
 
-/* Icon + channel name centered H/V in the wave row (idle placeholder) */
+/* Column-major 8px-tall glyph/icon into screen pixels (status-style bitmaps) */
+static void draw_col_bitmap(uint8_t x, uint8_t y_top, const uint8_t *cols, uint8_t w)
+{
+	for (uint8_t c = 0; c < w; c++) {
+		const uint8_t bits = cols[c];
+		for (uint8_t row = 0; row < 8u; row++) {
+			if (bits & (uint8_t)(1u << row))
+				draw_pixel((uint8_t)(x + c), (uint8_t)(y_top + row), true);
+		}
+	}
+}
+
+/* Build lock + battery + BatTxt string; returns total width. bat_bmp must be sized. */
+static uint8_t prepare_battery_row(uint8_t *bat_bmp, char *bat_str, size_t bat_str_sz,
+                                   uint8_t *lock_w_out, uint8_t *bat_w_out, uint8_t *text_w_out)
+{
+	uint8_t lock_w;
+	uint8_t bat_w;
+	uint8_t text_w;
+	uint8_t total;
+
+	UI_DrawBattery(bat_bmp, gBatteryDisplayLevel, gLowBatteryBlink);
+	bat_w = (uint8_t)sizeof(BITMAP_BatteryLevel1);
+	lock_w = (gEeprom.KEY_LOCK != 0) ? (uint8_t)sizeof(gFontKeyLock) : 0u;
+
+	bat_str[0] = '\0';
+	text_w = 0u;
+	switch (gSetting_battery_text) {
+	case 1: {
+		const uint16_t voltage = MIN(gBatteryVoltageAverage, 999);
+		snprintf(bat_str, bat_str_sz, "%u.%02u",
+		         voltage / 100u, voltage % 100u);
+		text_w = small_text_width(bat_str);
+		break;
+	}
+	case 2:
+		snprintf(bat_str, bat_str_sz, "%02u%%",
+		         BATTERY_VoltsToPercent(gBatteryVoltageAverage));
+		text_w = small_text_width(bat_str);
+		break;
+	default:
+		break;
+	}
+
+	total = bat_w;
+	if (lock_w > 0u)
+		total = (uint8_t)(total + lock_w + SH_PH_ROW_GAP);
+	if (text_w > 0u)
+		total = (uint8_t)(total + SH_PH_ROW_GAP + text_w);
+
+	*lock_w_out = lock_w;
+	*bat_w_out = bat_w;
+	*text_w_out = text_w;
+	return total;
+}
+
+/* One centered line: [lock?] battery [voltage|percent] */
+static void draw_battery_status_row(uint8_t y_top)
+{
+	char bat_str[8];
+	uint8_t bat_bmp[sizeof(BITMAP_BatteryLevel1)];
+	uint8_t lock_w;
+	uint8_t bat_w;
+	uint8_t text_w;
+	uint8_t total_w;
+	uint8_t bx;
+
+	total_w = prepare_battery_row(bat_bmp, bat_str, sizeof(bat_str),
+	                              &lock_w, &bat_w, &text_w);
+
+	if (total_w >= LCD_WIDTH)
+		bx = 0u;
+	else
+		bx = (uint8_t)((LCD_WIDTH - total_w) / 2u);
+
+	if (lock_w > 0u) {
+		draw_col_bitmap(bx, y_top, gFontKeyLock, lock_w);
+		bx = (uint8_t)(bx + lock_w + SH_PH_ROW_GAP);
+	}
+	draw_col_bitmap(bx, y_top, bat_bmp, bat_w);
+	bx = (uint8_t)(bx + bat_w);
+	if (text_w > 0u) {
+		bx = (uint8_t)(bx + SH_PH_ROW_GAP);
+		/* Same gFontSmall as status-bar BatTxt — matches battery icon height */
+		draw_small_text(bat_str, bx, y_top, true);
+	}
+}
+
+/* No last-RX yet (e.g. fresh boot): single centered battery / lock row */
+static void draw_idle_battery_placeholder(void)
+{
+	clear_wave_area();
+	draw_battery_status_row((uint8_t)(SH_WAVE_Y + (SH_WAVE_H - SH_PH_BAT_H) / 2u));
+}
+
+/* Icon + channel name on top; battery (+ optional lock) centered below.
+ * Both rows are vertically centered as one block inside the wave band. */
 static void draw_last_rx_placeholder(void)
 {
 	char name[22];
 	uint8_t name_w;
 	uint8_t total_w;
 	uint8_t x;
-	uint8_t y;
-	const uint8_t group_h = (SH_SPK_H > 8u) ? SH_SPK_H : 8u; /* gFontSmall is 8px */
+	uint8_t name_y;
+	uint8_t bat_y;
+	uint8_t group_h;
+	uint8_t line_gap;
+	uint8_t block_h;
 
-	if (!s_last_rx_valid)
+	if (!s_last_rx_valid) {
+		draw_idle_battery_placeholder();
 		return;
+	}
 
 	format_last_rx_name(name, sizeof(name));
+#ifdef ENABLE_CHINESE
+	group_h = SETTINGS_ChannelNameHasCjkUtf8(name) ? 12u : ((SH_SPK_H > 8u) ? SH_SPK_H : 8u);
+#else
+	group_h = (SH_SPK_H > 8u) ? SH_SPK_H : 8u; /* gFontSmall is 8px */
+#endif
 	name_w = small_text_width(name);
 	total_w = (uint8_t)(SH_SPK_W + SH_SPK_GAP + name_w);
+
+	/* Vertical center of (name row + gap + battery row) inside SH_WAVE_H */
+	line_gap = SH_PH_LINE_GAP;
+	block_h = (uint8_t)(group_h + SH_PH_BAT_H);
+	if ((uint8_t)(block_h + line_gap) > SH_WAVE_H) {
+		line_gap = (block_h >= SH_WAVE_H) ? 0u : (uint8_t)(SH_WAVE_H - block_h);
+	}
+	block_h = (uint8_t)(group_h + line_gap + SH_PH_BAT_H);
+	name_y = (uint8_t)(SH_WAVE_Y + (SH_WAVE_H - block_h) / 2u);
+	bat_y = (uint8_t)(name_y + group_h + line_gap);
 
 	clear_wave_area();
 
@@ -712,15 +1011,19 @@ static void draw_last_rx_placeholder(void)
 		x = 0u;
 	else
 		x = (uint8_t)((LCD_WIDTH - total_w) / 2u);
+	draw_spk_bitmap(x, name_y);
+	draw_small_text(name, (uint8_t)(x + SH_SPK_W + SH_SPK_GAP), name_y, true);
 
-	y = (uint8_t)(SH_WAVE_Y + (SH_WAVE_H - group_h) / 2u);
-
-	draw_spk_bitmap(x, y);
-	draw_small_text(name, (uint8_t)(x + SH_SPK_W + SH_SPK_GAP), y, true);
+	draw_battery_status_row(bat_y);
 }
 
 static void draw_wave_row(void)
 {
+	if (wave_overlay_active()) {
+		draw_wave_overlay();
+		return;
+	}
+
 	if (gCurrentFunction == FUNCTION_TRANSMIT) {
 		draw_tx_wave();
 	} else if (FUNCTION_IsRx() || rx_pillars_alive()) {
@@ -730,23 +1033,24 @@ static void draw_wave_row(void)
 	} else if (s_last_rx_valid) {
 		draw_last_rx_placeholder();
 	} else {
-		clear_wave_area();
+		draw_idle_battery_placeholder();
 	}
 }
 
 static void blit_wave_lines(void)
 {
-	/* wave occupies y0..19 → framebuffer lines 0 and 1, plus top of line 2 */
+	/* wave is screen y0..19 → status + fb lines 0..1 */
+	ST7565_BlitStatusLine();
 	ST7565_BlitLine(0);
 	ST7565_BlitLine(1);
-	ST7565_BlitLine(2);
 }
 
 void UI_SyrupHome_Tick10ms(void)
 {
 	if (gScreenToDisplay != DISPLAY_MAIN)
 		return;
-	if (gLowBattery && !gLowBatteryConfirmed)
+	/* Keep overlay text stable; do not animate bars underneath */
+	if (wave_overlay_active())
 		return;
 
 	if (++s_tick_div < SH_TICK_PERIOD_10MS)
@@ -785,21 +1089,19 @@ void UI_SyrupHome_Tick10ms(void)
 		/* no signal / left RX — keep falling tips, do not clear */
 		sample_rx_decay();
 		s_placeholder_blit_done = false;
-	} else if (!s_last_rx_valid) {
-		return;
-	} else if (s_placeholder_blit_done) {
-		return;
 	}
+	/* idle: last-RX or boot battery row — keep redrawing so bat / lock stay live */
 
 	draw_wave_row();
 	blit_wave_lines();
 
-	if (!tx && !rx && !rx_pillars_alive() && s_last_rx_valid)
+	if (!tx && !rx && !rx_pillars_alive())
 		s_placeholder_blit_done = true;
 }
 
 void UI_DisplaySyrupHome(void)
 {
+	UI_StatusClear();
 	UI_DisplayClear();
 
 	/* full-screen clear is fine on page entry; do not zero pillar state unless TX */
@@ -816,7 +1118,6 @@ void UI_DisplaySyrupHome(void)
 
 	if (gCurrentFunction != FUNCTION_TRANSMIT &&
 	    !FUNCTION_IsRx() &&
-	    !rx_pillars_alive() &&
-	    s_last_rx_valid)
+	    !rx_pillars_alive())
 		s_placeholder_blit_done = true;
 }

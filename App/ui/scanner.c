@@ -23,6 +23,7 @@
 #include "misc.h"
 #include "ui/helper.h"
 #include "ui/scanner.h"
+#include "ui/status.h"
 
 void UI_DisplayScanner(void)
 {
@@ -77,5 +78,5 @@ void UI_DisplayScanner(void)
  
     UI_PrintString(pPrintStr, 2, 0, 5, 8);
 
-    ST7565_BlitFullScreen();
+    UI_BlitFullScreen();
 }

@@ -22,6 +22,7 @@
 #include "settings.h"
 #include "ui/helper.h"
 #include "ui/menu.h"
+#include "ui/status.h"
 #include "ui/ui.h"
 
 #define RXTX_LOG_FLASH_BASE          0x1E0000u
@@ -796,7 +797,7 @@ static void RXTX_LOG_SetK5ViewerChannelName(RXTX_LogK5ViewerRow_t *row, uint16_t
     if (channel == RXTX_LOG_CHANNEL_NONE)
         return;
 
-    char name[RXTX_LOG_K5VIEWER_NAME_LENGTH + 1u];
+    char name[CHANNEL_NAME_MAX_BYTES + 1u];
     SETTINGS_FetchChannelName(name, channel);
     for (uint8_t i = 0; i < RXTX_LOG_K5VIEWER_NAME_LENGTH && name[i] != 0; i++)
         row->channelName[i] = name[i];
@@ -1280,14 +1281,14 @@ static void RXTX_LOG_ShowEmpty(bool showMessage)
 {
     if (showMessage)
         UI_PrintString("NO LOG", 0, 127, 1, 8);
-    ST7565_BlitFullScreen();
+    UI_BlitFullScreen();
 }
 
 static void RXTX_LOG_ShowClearConfirm(void)
 {
     UI_PrintString("CLEAR LOG", 0, 127, 1, 8);
     UI_PrintString("SURE?", 0, 127, 3, 8);
-    ST7565_BlitFullScreen();
+    UI_BlitFullScreen();
 }
 
 void UI_DisplayRxTxLog(void)
@@ -1370,7 +1371,7 @@ void UI_DisplayRxTxLog(void)
                             (uint8_t)((row * 8u) + 1u), false, false);
     }
 
-    ST7565_BlitFullScreen();
+    UI_BlitFullScreen();
 }
 
 #endif
