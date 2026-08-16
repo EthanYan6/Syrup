@@ -1609,8 +1609,7 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
 #ifdef ENABLE_FEAT_F4HWN_MENU_CAT
     if (gMenuLevel == MENU_LEVEL_CAT)
-    {   // saut-par-numero global : depuis l'ecran categories, entre dans All a l'item N
-        const uint8_t allCount = UI_MENU_CategoryItemCount(CAT_ALL);
+    {   // saut-par-numero : selectionne l'item N dans la liste ALL
         uint16_t value;
 
         if (gInputBoxIndex >= 2) {
@@ -1620,13 +1619,9 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             value = gInputBox[0];
         }
 
-        if (value > 0 && value <= allCount)
+        if (value > 0 && value <= gMenuListCount)
         {
-            gMenuCategory  = CAT_ALL;
-            gMenuCatCursor = gMenuListCount - 1;   // All = derniere entree de gCatOrder
-            UI_MENU_BuildView();
-            gMenuLevel     = MENU_LEVEL_ITEMS;
-            gMenuCursor    = value - 1;
+            gMenuCursor         = value - 1;
             gFlagRefreshSetting = true;
         }
         else if (gInputBoxIndex == 0)
@@ -1853,18 +1848,21 @@ Skip:
 
 #ifdef ENABLE_FEAT_F4HWN_MENU_CAT
         if (gMenuLevel == MENU_LEVEL_ITEMS)
-        {   // remonter aux categories au lieu de quitter le menu
-            gCatLastPos[gMenuCategory] = gMenuCursor;   // memorise la position dans la categorie
-            gMenuLevel  = MENU_LEVEL_CAT;
-            UI_MENU_BuildCategoryScreen();
-            gMenuCursor = gMenuCatCursor;
-            gRequestDisplayScreen = DISPLAY_MENU;
+        {   // liste ALL deja affichee : EXIT quitte le menu
+            gMenuCatCursor = gMenuCursor;
+            gMenuLevel = MENU_LEVEL_CAT;
             #ifdef ENABLE_VOICE
                 gAnotherVoiceID = VOICE_ID_CANCEL;
             #endif
+            gRequestDisplayScreen = DISPLAY_MAIN;
+            if (gEeprom.BACKLIGHT_TIME == 0)
+                BACKLIGHT_TurnOff();
             gPttWasReleased = true;
             return;
         }
+
+        if (gMenuLevel == MENU_LEVEL_CAT)
+            gMenuCatCursor = gMenuCursor;
 #endif
 
         #ifdef ENABLE_VOICE
@@ -1902,16 +1900,11 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
 
 #ifdef ENABLE_FEAT_F4HWN_MENU_CAT
     if (gMenuLevel == MENU_LEVEL_CAT)
-    {   // niveau categories : MENU descend dans la categorie choisie
-        gMenuCatCursor = gMenuCursor;
-        gMenuCategory  = gCatOrder[gMenuCursor];
-
-        UI_MENU_BuildView();
-        gMenuLevel   = MENU_LEVEL_ITEMS;
-        gMenuCursor  = (gCatLastPos[gMenuCategory] < gMenuListCount) ? gCatLastPos[gMenuCategory] : 0;
+    {   // liste ALL : MENU ouvre l'item selectionne (sous-menu)
+        gMenuLevel = MENU_LEVEL_ITEMS;
         gIsInSubMenu = false;
         gFlagRefreshSetting = true;
-        return;
+        // tombe dans le bloc !gIsInSubMenu ci-dessous pour entrer le sous-menu
     }
 #endif
 
