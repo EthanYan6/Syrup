@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<!--
+  Syrup Firmware
+
+  Copyright (c) 2026 BD1AHN
+
+  Licensed under the Apache License, Version 2.0
+
+  Project:
+      小甜水 (Syrup)
+
+  Maintainer:
+      BD1AHN
+
+  Official Website:
+      https://ethanyan6.github.io/Syrup/
+
+  The Syrup name, logo, and official project identity
+  are protected separately from the source code license.
+-->
+<html lang="zh" class="theme-light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>使用手册 · 小甜水刷机网站</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=20260816syrup">
+</head>
+<body class="help-page">
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="icon-cup" viewBox="0 0 120 120">
+      <!-- straw -->
+      <rect x="72" y="8" width="6" height="52" rx="3" fill="#7ec8e3" transform="rotate(12 75 34)"/>
+      <rect x="73" y="6" width="4" height="10" rx="2" fill="#5bb0d0" transform="rotate(12 75 11)"/>
+      <!-- cup body -->
+      <path d="M34 38h52l-6 58c-1 8-8 14-16 14H56c-8 0-15-6-16-14L34 38z" fill="#ffffff" stroke="#d4a017" stroke-width="3"/>
+      <!-- drink (half) -->
+      <path d="M38 68h44l-3.2 30c-.6 5-5.5 9-10.8 9H52c-5.3 0-10.2-4-10.8-9L38 68z" fill="#ffd54a"/>
+      <path d="M40 68h40" stroke="#ffe9a0" stroke-width="2" opacity="0.8"/>
+      <!-- cup rim -->
+      <ellipse cx="60" cy="38" rx="27" ry="8" fill="#fff8e7" stroke="#d4a017" stroke-width="3"/>
+      <!-- cute face -->
+      <circle cx="50" cy="82" r="2.4" fill="#5a3d1a"/>
+      <circle cx="68" cy="82" r="2.4" fill="#5a3d1a"/>
+      <path d="M54 90c3 3 9 3 12 0" fill="none" stroke="#5a3d1a" stroke-width="2" stroke-linecap="round"/>
+      <!-- handle -->
+      <path d="M86 48c12 2 16 18 8 28" fill="none" stroke="#d4a017" stroke-width="4" stroke-linecap="round"/>
+    </symbol>
+  </svg>
+
+  <div class="top-right-buttons help-top-actions">
+    <a href="index.html" class="help-btn" id="helpBackBtn" title="返回刷机页面" aria-label="返回刷机页面" data-i18n-title="helpBackTitle" data-i18n-aria="helpBackTitle">
+      <svg class="help-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+      <span class="help-btn__text" data-i18n="helpBack">返回刷机</span>
+    </a>
+    <button type="button" class="help-btn" id="helpPdfBtn" title="下载为 PDF" aria-label="下载为 PDF" data-i18n-title="helpPdfTitle" data-i18n-aria="helpPdfTitle">
+      <svg class="help-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <path d="M14 2v6h6"/>
+        <path d="M12 18v-6"/>
+        <path d="M9 15l3 3 3-3"/>
+      </svg>
+      <span class="help-btn__text" data-i18n="helpPdf">下载 PDF</span>
+    </button>
+    <button type="button" id="langSwitchBtn" class="lang-switch" title="切换语言" aria-label="切换语言" data-i18n-title="langSwitchTitle" data-i18n-aria="langSwitchTitle">
+      <span class="lang-switch__text" id="langSwitchLabel">EN</span>
+    </button>
+  </div>
+
+  <header class="help-hero">
+    <svg class="help-hero__cup" aria-hidden="true"><use href="#icon-cup"></use></svg>
+    <div class="help-hero__copy">
+      <p class="help-hero__eyebrow" data-i18n="brandTagline">Syrup · Quansheng UV-K1 / K5V3</p>
+      <h1 class="help-hero__title" data-i18n="helpTitle">使用手册</h1>
+      <p class="help-hero__desc" data-i18n="helpHeroDesc">刷机、校准、字库与写频操作说明</p>
+    </div>
+  </header>
+
+  <div class="help-layout">
+    <aside class="help-toc" id="helpToc" aria-label="目录">
+      <h2 class="help-toc__title" data-i18n="helpTocTitle">目录</h2>
+      <nav class="help-toc__nav" id="helpTocNav">
+        <div class="help-toc__loading" data-i18n="helpTocLoading">加载中...</div>
+      </nav>
+    </aside>
+    <main class="help-main" id="helpMain">
+      <article class="help-article" id="helpArticle">
+        <div class="help-content-loading" data-i18n="helpContentLoading">正在加载文档...</div>
+      </article>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
+  <script src="js/lang.js?v=20260723manual"></script>
+  <script src="js/manual.js?v=20260723manual"></script>
+</body>
+</html>

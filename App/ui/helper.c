@@ -503,6 +503,90 @@ size_t UI_SmallStringPixelWidth(const char *pString)
     return total_width;
 }
 
+uint8_t UI_SmallLinePixelHeight(const char *pString)
+{
+    const uint8_t latin_h = 8u;
+    const uint8_t cjk_h   = 12u;
+    size_t        i;
+
+    if (pString == NULL || pString[0] == '\0')
+        return latin_h;
+
+    i = 0;
+    while (pString[i]) {
+        if (IsChineseChar(&pString[i]))
+            return cjk_h;
+        i++;
+    }
+    return latin_h;
+}
+
+void UI_PrintStringSmallStackedAtPixel(const char *const *lines, uint8_t n_lines, uint8_t x_start, uint8_t x_end, uint8_t y_pixel_start, uint8_t y_pixel_end, uint8_t gap_px, uint8_t latin_down_when_mixed)
+{
+    uint8_t  heights[FRAME_LINES];
+    uint8_t  i;
+    uint8_t  n;
+    uint16_t block_h;
+    uint16_t area_h;
+    uint8_t  y;
+
+    if (lines == NULL || n_lines == 0u)
+        return;
+    if (y_pixel_end < y_pixel_start)
+        return;
+
+    n = n_lines;
+    if (n > FRAME_LINES)
+        n = FRAME_LINES;
+
+    block_h = 0u;
+    for (i = 0; i < n; i++) {
+        heights[i] = UI_SmallLinePixelHeight(lines[i]);
+        block_h = (uint16_t)(block_h + heights[i]);
+        if (i > 0u)
+            block_h = (uint16_t)(block_h + gap_px);
+    }
+
+    area_h = (uint16_t)y_pixel_end - (uint16_t)y_pixel_start + 1u;
+    if (block_h <= area_h)
+        y = (uint8_t)(y_pixel_start + (uint8_t)((area_h - block_h) / 2u));
+    else
+        y = y_pixel_start;
+
+    for (i = 0; i < n; i++) {
+        if (lines[i] != NULL && lines[i][0] != '\0') {
+            const uint8_t y1 = (uint8_t)(y + heights[i] - 1u);
+
+            UI_PrintStringSmallAtPixel(lines[i], x_start, x_end, y, y1, latin_down_when_mixed);
+        }
+        y = (uint8_t)(y + heights[i] + gap_px);
+    }
+}
+
+uint8_t UI_SmallLatinPixelY(uint8_t y_pixel_start, uint8_t y_pixel_end, bool mixed_cjk, uint8_t latin_down_when_mixed)
+{
+    const uint8_t eng_char_height = 7;
+    const uint16_t y_range = (uint16_t)y_pixel_end - (uint16_t)y_pixel_start + 1u;
+    unsigned y_offset = 0;
+    uint8_t y_pixel;
+
+    if (y_range >= eng_char_height)
+        y_offset = (unsigned)((y_range - eng_char_height) / 2u);
+    if (y_range >= eng_char_height) {
+        const unsigned max_off = (unsigned)(y_range - eng_char_height);
+        if (y_offset > max_off)
+            y_offset = max_off;
+    }
+    y_pixel = (uint8_t)(y_pixel_start + (uint8_t)y_offset);
+    /* Mixed CJK + Latin: move Latin down to align baseline with Han */
+    if (mixed_cjk) {
+        const unsigned add = (unsigned)(latin_down_when_mixed + 1u);
+        if (y_pixel <= (uint8_t)(255u - add))
+            y_pixel = (uint8_t)(y_pixel + add);
+    }
+    return y_pixel;
+}
+
 void UI_PrintStringSmallAtPixel(const char *pString, uint8_t x_start, uint8_t x_end, uint8_t y_pixel_start, uint8_t y_pixel_end, uint8_t latin_down_when_mixed)
 {
     const uint8_t eng_char_width = 6;
@@ -534,22 +618,7 @@ void UI_PrintStringSmallAtPixel(const char *pString, uint8_t x_start, uint8_t x_
             x += chn_char_width + 1;
             i += 3;
         } else {
-            const uint16_t y_range = (uint16_t)y_pixel_end - (uint16_t)y_pixel_start + 1u;
-            unsigned y_offset = 0;
-            if (y_range >= eng_char_height)
-                y_offset = (unsigned)((y_range - eng_char_height) / 2u);
-            if (y_range >= eng_char_height) {
-                const unsigned max_off = (unsigned)(y_range - eng_char_height);
-                if (y_offset > max_off)
-                    y_offset = max_off;
-            }
-            uint8_t y_pixel = y_pixel_start + (uint8_t)y_offset;
-            /* Mixed CJK + Latin: move Latin down to align baseline with Han */
-            if (has_chinese) {
-                const unsigned add = (unsigned)(latin_down_when_mixed + 1u);
-                if (y_pixel <= (uint8_t)(255u - add))
-                    y_pixel = (uint8_t)(y_pixel + add);
-            }
+            uint8_t y_pixel = UI_SmallLatinPixelY(y_pixel_start, y_pixel_end, has_chinese, latin_down_when_mixed);
             uint8_t line = y_pixel / 8;
             uint8_t bit_offset = y_pixel % 8;
             if (line < FRAME_LINES && pString[i] >= '!' && pString[i] < 127) {

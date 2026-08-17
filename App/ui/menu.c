@@ -1232,15 +1232,9 @@ static void UI_MENU_DrawSmallCenteredAtY(const char *text, uint8_t y_top)
 
 #ifdef ENABLE_CHINESE
 	/* UTF-8 channel names / CN labels: 12px band */
-	{
-		const char *p = text;
-		while (*p) {
-			if ((uint8_t)*p >= 0xE4u) {
-				UI_PrintStringSmallChannelNameBand(text, 0, LCD_WIDTH - 1, y_top);
-				return;
-			}
-			p++;
-		}
+	if (UI_SmallLinePixelHeight(text) > 8u) {
+		UI_PrintStringSmallChannelNameBand(text, 0, LCD_WIDTH - 1, y_top);
+		return;
 	}
 #endif
 
@@ -1253,13 +1247,30 @@ static void UI_MENU_DrawSmallCenteredAtY(const char *text, uint8_t y_top)
 static uint8_t UI_MENU_StackedLineHeight(const char *text)
 {
 #ifdef ENABLE_CHINESE
-	if (text != NULL && SETTINGS_ChannelNameHasCjkUtf8(text))
-		return 12u;
+	return UI_SmallLinePixelHeight(text);
 #else
 	(void)text;
-#endif
 	return 8u;
+#endif
 }
+
+#ifdef ENABLE_CHINESE
+/* After '\n' was replaced with '\0': walk printable runs into line pointers. */
+static uint8_t UI_MENU_SplitNulLines(const char *buf, unsigned len, const char **out, uint8_t max_lines)
+{
+	unsigned i = 0;
+	uint8_t  n = 0;
+
+	while (i < len && n < max_lines) {
+		out[n++] = buf + i;
+		while (i < len && (uint8_t)buf[i] >= 32u)
+			i++;
+		while (i < len && (uint8_t)buf[i] < 32u)
+			i++;
+	}
+	return n;
+}
+#endif
 
 /* Empile des lignes small centrees : ecart fixe gap_px, bloc centre dans [area_y0, area_y1).
  * Line pitch follows each line's real height so a 12px CJK name does not overlap the next row. */
@@ -2421,6 +2432,39 @@ void UI_DisplayMenu(void)
                 if (lines > 4)
                     lines = 4;
 
+#ifdef ENABLE_CHINESE
+                if (gUiLanguage == UI_LANGUAGE_CN) {
+                    const char *ml[4];
+                    const uint8_t stack_gap = 1u;
+                    uint8_t       n;
+                    uint8_t       li_h;
+                    uint8_t       block_h = 0u;
+                    uint8_t       need_y;
+                    uint8_t       band_end;
+
+                    n = UI_MENU_SplitNulLines(String, len, ml, (uint8_t)lines);
+                    for (li_h = 0; li_h < n; li_h++) {
+                        block_h = (uint8_t)(block_h + UI_SmallLinePixelHeight(ml[li_h]));
+                        if (li_h > 0u)
+                            block_h = (uint8_t)(block_h + stack_gap);
+                    }
+                    need_y = (uint8_t)(title_h + block_h + gap_px);
+                    if (need_y > (uint8_t)(gaugeLine * 8u)) {
+                        gaugeLine = (uint8_t)((need_y + 7u) / 8u);
+                        if (gaugeLine > 6u)
+                            gaugeLine = 6u;
+                    }
+                    band_end = (uint8_t)(gaugeLine * 8u);
+                    if (band_end > gap_px)
+                        band_end = (uint8_t)(band_end - gap_px - 1u);
+                    if (band_end < title_h)
+                        band_end = title_h;
+                    UI_PrintStringSmallStackedAtPixel(ml, n,
+                        (uint8_t)menu_item_x1, (uint8_t)menu_item_x2,
+                        title_h, band_end, stack_gap, 0u);
+                } else
+#endif
+                {
                 /* Bas du texte a gauge_y0 - 3px */
                 text_y0 = (int)(gaugeLine * 8u) - (int)gap_px - (int)(lines * line_h);
                 if (text_y0 < (int)title_h)
@@ -2437,14 +2481,6 @@ void UI_DisplayMenu(void)
 
                 for (li = 0, i = 0; li < lines && i < len; li++)
                 {
-#ifdef ENABLE_CHINESE
-                    if (gUiLanguage == UI_LANGUAGE_CN) {
-                        const uint8_t tw = (uint8_t)UI_SmallStringPixelWidth(String + i);
-                        const uint8_t tx = (LCD_WIDTH > tw) ? (uint8_t)((LCD_WIDTH - tw) / 2u) : 0u;
-                        const uint8_t ty = (uint8_t)(text_y0 + (int)(li * 12u));
-                        UI_PrintStringSmallAtPixel(String + i, tx, LCD_WIDTH - 1, ty, (uint8_t)(ty + 11u), 0u);
-                    } else
-#endif
                     {
                         const uint8_t tw = UI_MENU_SmallTextWidth(String + i);
                         const uint8_t tx = (LCD_WIDTH > tw) ? (uint8_t)((LCD_WIDTH - tw) / 2u) : 0u;
@@ -2457,6 +2493,7 @@ void UI_DisplayMenu(void)
                     while (i < len && String[i] < 32)
                         i++;
                 }
+                }
 
                 ST7565_Gauge(gaugeLine, gaugeMin, gaugeMax, gSubMenuSelection);
             }
@@ -2465,17 +2502,23 @@ void UI_DisplayMenu(void)
                 small = true;
                 if (lines > 5)
                     lines = 5;
+
+#ifdef ENABLE_CHINESE
+                if (gUiLanguage == UI_LANGUAGE_CN || SETTINGS_ChannelNameHasCjkUtf8(String)) {
+                    const char *ml[5];
+                    const uint8_t n = UI_MENU_SplitNulLines(String, len, ml, (uint8_t)lines);
+
+                    /* Title occupies y0..11 (CN) / y0..15 (EN big). Content band = fb lines 2..6. */
+                    UI_PrintStringSmallStackedAtPixel(ml, n,
+                        (uint8_t)menu_item_x1, (uint8_t)menu_item_x2,
+                        16u, 55u, 1u, 0u);
+                } else
+#endif
+                {
                 y = 2u + ((5u - lines) / 2u);
 
                 for (i = 0; i < len && lines > 0; lines--)
                 {
-#ifdef ENABLE_CHINESE
-                    if (gUiLanguage == UI_LANGUAGE_CN || SETTINGS_ChannelNameHasCjkUtf8(String + i)) {
-                        /* CJK glyphs (incl. Lang→中文 under English UI); centers in [x1,x2] */
-                        UI_PrintStringSmallAtPixel(String + i, (uint8_t)menu_item_x1, (uint8_t)menu_item_x2,
-                            (uint8_t)(y * 8u), (uint8_t)(y * 8u + 11u), 0u);
-                    } else
-#endif
                     UI_PrintStringSmallNormal(String + i, menu_item_x1, menu_item_x2, y);
 
                     while (i < len && String[i] >= 32)
@@ -2484,6 +2527,7 @@ void UI_DisplayMenu(void)
                         i++;
 
                     y += 1;
+                }
                 }
             }
             else

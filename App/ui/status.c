@@ -61,7 +61,7 @@ void UI_DisplayStatus()
     if (APP_IsScreenSaverDisplayed())
         return;
 
-    /* Home owns the status line as the top of the wave — do not blank it */
+    /* Home owns the status line as the top of channel 1 — do not blank it */
     if (gScreenToDisplay == DISPLAY_MAIN)
         return;
 

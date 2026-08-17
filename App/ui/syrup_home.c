@@ -23,15 +23,15 @@
 #include "ui/inputbox.h"
 #include "ui/ui.h"
 
-/* Layout: full 64px screen — wave uses former status band; two taller channel rows */
+/* Layout: two channel rows on top; wave / last-RX / battery at bottom */
 #define SH_STATUS_H        8u
 #define SH_SCREEN_H        64u
-#define SH_WAVE_Y          0u
 #define SH_WAVE_H          20u
-#define SH_CH_H            20u  /* was 16; +4 from half of freed status */
+#define SH_CH_H            20u
 #define SH_CH_GAP          2u
-#define SH_CH0_Y           (SH_WAVE_Y + SH_WAVE_H + SH_CH_GAP) /* 22 */
-#define SH_CH1_Y           (SH_CH0_Y + SH_CH_H + SH_CH_GAP)     /* 44 */
+#define SH_CH0_Y           0u
+#define SH_CH1_Y           (SH_CH0_Y + SH_CH_H + SH_CH_GAP)     /* 22 */
+#define SH_WAVE_Y          (SH_CH1_Y + SH_CH_H + SH_CH_GAP)     /* 44 */
 #define SH_NAME_Y_OFF      0u
 #define SH_PARAM_Y_OFF     8u  /* mod/pwr/sql — 4px above former +12 */
 #define SH_TONE_Y_OFF      14u /* R:/T: subtones under params */
@@ -118,11 +118,6 @@ static void draw_pixel(uint8_t x, uint8_t y, bool black)
 	UI_DrawPixelBuffer(gFrameBuffer, x, (uint8_t)(y - SH_STATUS_H), black);
 }
 
-static uint8_t fb_y(uint8_t screen_y)
-{
-	return (screen_y >= SH_STATUS_H) ? (uint8_t)(screen_y - SH_STATUS_H) : 0u;
-}
-
 static void fill_rect(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, bool black)
 {
 	for (uint8_t y = y0; y <= y1 && y < SH_SCREEN_H; y++) {
@@ -180,6 +175,10 @@ static uint8_t draw_small_text(const char *text, uint8_t x, uint8_t y_top, bool 
 	const uint8_t left = x;
 #ifdef ENABLE_CHINESE
 	size_t i = 0;
+	const bool mixed_cjk = SETTINGS_ChannelNameHasCjkUtf8(text);
+	const uint8_t latin_y = mixed_cjk
+		? UI_SmallLatinPixelY(y_top, (uint8_t)(y_top + 11u), true, 0u)
+		: y_top;
 	while (text[i] != '\0') {
 		if (is_cjk_utf8(&text[i])) {
 			(void)black;
@@ -197,7 +196,7 @@ static uint8_t draw_small_text(const char *text, uint8_t x, uint8_t y_top, bool 
 					uint8_t bits = glyph[col];
 					for (uint8_t row = 0; row < 8u; row++) {
 						if (bits & (uint8_t)(1u << row))
-							draw_pixel((uint8_t)(gx + col), (uint8_t)(y_top + row), black);
+							draw_pixel((uint8_t)(gx + col), (uint8_t)(latin_y + row), black);
 					}
 				}
 			}
@@ -245,12 +244,20 @@ static uint8_t smallest_width(const char *text)
 	return (uint8_t)(strlen(text) * 4u);
 }
 
+/* 3x5 text at screen-absolute Y (CH0 sits in the hardware status line) */
+static void draw_smallest_abs(const char *text, uint8_t x, uint8_t screen_y, bool fill)
+{
+	if (screen_y < SH_STATUS_H)
+		GUI_DisplaySmallest(text, x, screen_y, true, fill);
+	else
+		GUI_DisplaySmallest(text, x, (uint8_t)(screen_y - SH_STATUS_H), false, fill);
+}
+
 static uint8_t draw_param(const char *text, uint8_t x, uint8_t y, bool black)
 {
 	if (text == NULL || text[0] == '\0')
 		return x;
-	/* 3x5 helper is framebuffer-relative; channel rows sit below status */
-	GUI_DisplaySmallest(text, x, fb_y(y), false, black);
+	draw_smallest_abs(text, x, y, black);
 	return (uint8_t)(x + smallest_width(text) + SH_GAP_PX);
 }
 
@@ -284,6 +291,20 @@ static void format_tone(char *out, size_t out_sz, const FREQ_Config_t *pConfig)
 	}
 }
 
+static void invert_pixel(uint8_t x, uint8_t y)
+{
+	if (x >= LCD_WIDTH || y >= SH_SCREEN_H)
+		return;
+	if (y < SH_STATUS_H) {
+		gStatusLine[x] ^= (uint8_t)(1u << y);
+		return;
+	}
+	{
+		const uint8_t sy = (uint8_t)(y - SH_STATUS_H);
+		gFrameBuffer[sy / 8u][x] ^= (uint8_t)(1u << (sy % 8u));
+	}
+}
+
 static void invert_channel_row(uint8_t vfo)
 {
 	const uint8_t y0 = (vfo == 0u) ? SH_CH0_Y : SH_CH1_Y;
@@ -296,11 +317,8 @@ static void invert_channel_row(uint8_t vfo)
 	}
 
 	for (uint8_t y = y0; y <= y1 && y < SH_SCREEN_H; y++) {
-		for (uint8_t x = 0; x < LCD_WIDTH; x++) {
-			const uint8_t sy = fb_y(y);
-			const uint8_t pattern = (uint8_t)(1u << (sy % 8u));
-			gFrameBuffer[sy / 8u][x] ^= pattern;
-		}
+		for (uint8_t x = 0; x < LCD_WIDTH; x++)
+			invert_pixel(x, y);
 	}
 }
 
@@ -324,7 +342,7 @@ static void draw_dtmf_live(uint8_t y, uint8_t x_right, const char *digits)
 		dig_off++;
 	}
 	snprintf(buf, sizeof(buf), "%s%s", prefix, digits + dig_off);
-	GUI_DisplaySmallest(buf, x_left, fb_y(y), false, true);
+	draw_smallest_abs(buf, x_left, y, true);
 }
 
 static void draw_channel_row(uint8_t vfo)
@@ -359,7 +377,7 @@ static void draw_channel_row(uint8_t vfo)
 		const uint8_t box_y0 = (uint8_t)(badge_y - 1u);
 		const uint8_t box_y1 = (uint8_t)(badge_y + 5u);
 		fill_rect(box_x0, box_y0, box_x1, box_y1, true);
-		GUI_DisplaySmallest(String, text_x, fb_y(badge_y), false, false);
+		draw_smallest_abs(String, text_x, badge_y, false);
 	}
 
 	/* frequency string (right column, also DTMF bound) */
@@ -433,7 +451,7 @@ static void draw_channel_row(uint8_t vfo)
 			         (unsigned)(gEeprom.ScreenChannel[vfo] + 1u));
 			const uint8_t num_w = smallest_width(num);
 			if (num_w + 2u < name_left)
-				GUI_DisplaySmallest(num, (uint8_t)(name_left - 2u - num_w), fb_y(name_y), false, true);
+				draw_smallest_abs(num, (uint8_t)(name_left - 2u - num_w), name_y, true);
 		}
 	}
 
@@ -639,7 +657,7 @@ static void draw_wave_centered_message(const char *text, bool key_lock_hint)
 	clear_wave_area();
 
 #ifdef ENABLE_CHINESE
-	text_h = SETTINGS_ChannelNameHasCjkUtf8(text) ? 12u : 8u;
+	text_h = UI_SmallLinePixelHeight(text);
 #else
 	text_h = 8u;
 #endif
@@ -694,7 +712,7 @@ static void rx_block_ys(uint8_t b_from_bottom, uint8_t *y0, uint8_t *y1)
 	*y0 = (uint8_t)(bot - (hi - 1u));
 }
 
-/* Top-center S / dBm — tight plate only; pillars still reach status-bar bottom */
+/* Wave-row center S / dBm — tight plate only */
 static void draw_s_meter_label(void)
 {
 	char buf[20];
@@ -738,7 +756,7 @@ static void draw_s_meter_label(void)
 	else
 		text_x = (uint8_t)((LCD_WIDTH - text_w) / 2u);
 
-	/* flush under screen top; only a small center strip */
+	/* flush under the top of the wave row; only a small center strip */
 	text_y = (uint8_t)(SH_WAVE_Y + SH_METER_PAD_Y);
 
 	box_x0 = (text_x > SH_METER_PAD_X) ? (uint8_t)(text_x - SH_METER_PAD_X) : 0u;
@@ -752,10 +770,7 @@ static void draw_s_meter_label(void)
 
 	/* tight blank plate only behind the digits — not a full-width row */
 	fill_rect(box_x0, box_y0, box_x1, box_y1, false);
-	if (text_y < SH_STATUS_H)
-		GUI_DisplaySmallest(buf, text_x, text_y, true, true);
-	else
-		GUI_DisplaySmallest(buf, text_x, fb_y(text_y), false, true);
+	draw_smallest_abs(buf, text_x, text_y, true);
 }
 
 static void draw_rx_tip_cap(uint8_t x0, uint8_t tip_level)
@@ -988,7 +1003,9 @@ static void draw_last_rx_placeholder(void)
 
 	format_last_rx_name(name, sizeof(name));
 #ifdef ENABLE_CHINESE
-	group_h = SETTINGS_ChannelNameHasCjkUtf8(name) ? 12u : ((SH_SPK_H > 8u) ? SH_SPK_H : 8u);
+	group_h = UI_SmallLinePixelHeight(name);
+	if (group_h <= 8u)
+		group_h = (SH_SPK_H > 8u) ? SH_SPK_H : 8u;
 #else
 	group_h = (SH_SPK_H > 8u) ? SH_SPK_H : 8u; /* gFontSmall is 8px */
 #endif
@@ -1039,10 +1056,21 @@ static void draw_wave_row(void)
 
 static void blit_wave_lines(void)
 {
-	/* wave is screen y0..19 → status + fb lines 0..1 */
-	ST7565_BlitStatusLine();
-	ST7565_BlitLine(0);
-	ST7565_BlitLine(1);
+	uint8_t y = SH_WAVE_Y;
+	const uint8_t y_end = (uint8_t)(SH_WAVE_Y + SH_WAVE_H);
+
+	while (y < y_end && y < SH_SCREEN_H) {
+		if (y < SH_STATUS_H) {
+			ST7565_BlitStatusLine();
+			y = SH_STATUS_H;
+			continue;
+		}
+		{
+			const uint8_t line = (uint8_t)((y - SH_STATUS_H) / 8u);
+			ST7565_BlitLine(line);
+			y = (uint8_t)(SH_STATUS_H + (uint8_t)((line + 1u) * 8u));
+		}
+	}
 }
 
 void UI_SyrupHome_Tick10ms(void)
