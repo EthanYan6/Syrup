@@ -987,6 +987,57 @@ button.btn-with-icon {
 }
 .writefreq-validation { font-size: 0.85em; color: #f85149; white-space: pre-wrap; }
 
+.basicinfo-lead {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  line-height: 1.55;
+}
+.basicinfo-form {
+  display: grid;
+  gap: 14px;
+  max-width: 420px;
+}
+.basicinfo-field input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 1em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+.basicinfo-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.basicinfo-hint {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-top: 12px;
+  line-height: 1.5;
+}
+.basicinfo-validation {
+  font-size: 0.85em;
+  color: #f85149;
+  white-space: pre-wrap;
+  margin-top: 10px;
+}
+.basicinfo-width-hint {
+  font-size: 0.8em;
+  color: var(--text-subtle);
+  margin-top: 6px;
+}
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+
 /* 顶部滚动公告栏 */
 .top-marquee {
   position: fixed;

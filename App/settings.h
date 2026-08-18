@@ -22,6 +22,11 @@
 
 /* Unified MR channel name @ SPI Flash 0x004000 slot (16 B): max UTF-8/ASCII payload e.g. 5 Hanzi */
 #define CHANNEL_NAME_MAX_BYTES 15u
+/* Mangosteen 自定义文案区：0x00A0C8（原开机信息第 1 行起 32 字节，至 DTMF 区前） */
+#define HOME_LABEL_FLASH_ADDR  0x00A0C8u
+#define HOME_LABEL_FLASH_SIZE  32u
+#define HOME_LABEL_MAX_BYTES   31u
+#define HOME_LABEL_DEFAULT     "BD1AHN"
 
 #include "frequencies.h"
 #include <helper/battery.h>
@@ -314,6 +319,7 @@ typedef struct {
 #endif
     uint8_t               BACKLIGHT_MAX;
     BATTERY_Type_t        BATTERY_TYPE;
+    char                  HOME_LABEL[HOME_LABEL_FLASH_SIZE];
 #ifdef ENABLE_RSSI_BAR
     uint8_t               S0_LEVEL;
     uint8_t               S9_LEVEL;
@@ -360,6 +366,7 @@ void SETTINGS_SaveVfoIndices(void);
 void SETTINGS_SaveVfoIndicesFlush(void);
 void SETTINGS_SaveSettings(void);
 void SETTINGS_SaveChannelName(uint16_t channel, const char * name);
+const char *SETTINGS_HomeLabelText(void);
 void SETTINGS_SaveChannel(uint16_t Channel, uint8_t VFO, const VFO_Info_t *pVFO, uint8_t Mode);
 
 #if defined(ENABLE_CHINESE) || defined(ENABLE_FEAT_F4HWN)

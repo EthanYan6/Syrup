@@ -26,6 +26,7 @@
 #include "ui/welcome.h"
 #include "ui/status.h"
 #include "version.h"
+#include "settings.h"
 #include "bitmap_syrup.h"
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
@@ -253,12 +254,28 @@ void UI_DisplayWelcome(void)
         }
     }
 
+    {
+        const char *home_label = SETTINGS_HomeLabelText();
+#ifdef ENABLE_CHINESE
+        if (SETTINGS_ChannelNameHasCjkUtf8(home_label)) {
+            /* Version on line 4 (screen y 40–47); 12px CJK last line at fb y 44–55 (screen 52–63). */
 #ifdef ENABLE_FEAT_F4HWN
-    UI_PrintStringSmallNormal(DisplayVersion, 0, 127, 5);
+            UI_PrintStringSmallNormal(DisplayVersion, 0, 127, 4);
 #else
-    UI_PrintStringSmallNormal(Version, 0, 127, 5);
+            UI_PrintStringSmallNormal(Version, 0, 127, 4);
 #endif
-    UI_PrintStringSmallNormal("BD1AHN", 0, 127, 6);
+            UI_PrintStringSmallAtPixel(home_label, 0, 127, 44u, 55u, 0u);
+        } else
+#endif
+        {
+#ifdef ENABLE_FEAT_F4HWN
+            UI_PrintStringSmallNormal(DisplayVersion, 0, 127, 5);
+#else
+            UI_PrintStringSmallNormal(Version, 0, 127, 5);
+#endif
+            UI_PrintStringSmallNormal(home_label, 0, 127, 6);
+        }
+    }
 
     ST7565_BlitStatusLine();
     ST7565_BlitFullScreen();

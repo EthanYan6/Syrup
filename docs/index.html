@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260816syrup">
+  <link rel="stylesheet" href="css/style.css?v=20260818bootlabel">
   <script src="//cdn.busuanzi.cc/busuanzi/3.6.9/busuanzi.min.js" defer></script>
 </head>
 <body>
@@ -194,6 +194,7 @@
           <button class="tab" type="button" data-tab="font" id="tabFont" data-i18n="tabFont">刷字库</button>
           <button class="tab" type="button" data-tab="restore" id="tabRestore" data-i18n="tabRestore">恢复校准</button>
           <button class="tab" type="button" data-tab="writefreq" id="tabWritefreq" data-i18n="tabWritefreq">写频</button>
+          <button class="tab" type="button" data-tab="basicinfo" id="tabBasicinfo" data-i18n="tabBasicinfo">基础信息</button>
         </div>
 
         <!-- DUMP -->
@@ -385,6 +386,40 @@
           <p id="writefreqValidation" class="writefreq-validation" style="display:none;"></p>
         </div>
 
+        <!-- BASIC INFO (DTMF UP/DOWN codes) -->
+        <div class="tab-content" id="basicinfo-content">
+          <section class="section">
+            <p class="basicinfo-lead" data-i18n="basicinfoNote">
+              提示：仅适配 Syrup 固件。写入后改菜单「上行码 / 下行码」，以及开机页最后一行（默认 BD1AHN）。设备会重启以生效。请先正常开机进入使用界面再连接 USB。
+            </p>
+            <div class="basicinfo-form">
+              <div class="basicinfo-field">
+                <label for="basicinfoUpCode" data-i18n="basicinfoUpCode">上行码</label>
+                <input type="text" id="basicinfoUpCode" maxlength="15" spellcheck="false" autocomplete="off" inputmode="text" data-i18n-placeholder="basicinfoCodePlaceholder" placeholder="0-9 A-D * #，最长 15 位">
+              </div>
+              <div class="basicinfo-field">
+                <label for="basicinfoDownCode" data-i18n="basicinfoDownCode">下行码</label>
+                <input type="text" id="basicinfoDownCode" maxlength="15" spellcheck="false" autocomplete="off" inputmode="text" data-i18n-placeholder="basicinfoCodePlaceholder" placeholder="0-9 A-D * #，最长 15 位">
+              </div>
+              <div class="basicinfo-field">
+                <label for="basicinfoHomeLabel" data-i18n="basicinfoHomeLabel">开机页显示内容</label>
+                <input type="text" id="basicinfoHomeLabel" maxlength="18" spellcheck="false" autocomplete="off" data-i18n-placeholder="basicinfoHomePlaceholder" placeholder="默认 BD1AHN，支持中英文">
+                <p class="basicinfo-width-hint" id="basicinfoHomeWidthHint"></p>
+              </div>
+            </div>
+            <p class="basicinfo-hint" data-i18n="basicinfoHint">上行/下行码：0-9、A-D、*、#。开机页内容按 128 像素屏宽限制（英文最多 18 字，汉字最多 9 字）。可只填需要改的项。</p>
+            <p id="basicinfoValidation" class="basicinfo-validation" style="display:none;"></p>
+            <div class="basicinfo-actions">
+              <button type="button" class="btn-inline btn-with-icon" id="basicinfoReadBtn" title="从设备读取" data-i18n-title="readFromDevice">
+                <span data-i18n="readFromDevice">从设备读取</span>
+              </button>
+              <button type="button" class="btn-inline btn-with-icon" id="basicinfoWriteBtn" title="写入设备" data-i18n-title="writeToDevice">
+                <span data-i18n="writeToDevice">写入设备</span>
+              </button>
+            </div>
+          </section>
+        </div>
+
         <div id="logAnchorDefault" class="log-anchor-default" aria-hidden="true"></div>
 
         <section class="log-container" id="logContainerSection">
@@ -404,7 +439,7 @@
           <span data-i18n="browserNote">需要 Chrome / Edge / Opera 浏览器。</span>
           <strong data-i18n="flashFirmwareBoot">仅刷固件</strong>
           <span data-i18n="enterBootMode">需进入 BOOT 模式（按住 PTT 开机）。</span>
-          <strong data-i18n="otherOperations">备份校准、校验校准、恢复校准、写频</strong>
+          <strong data-i18n="otherOperations">备份校准、校验校准、恢复校准、写频、基础信息</strong>
           <span data-i18n="normalMode">均在正常开机使用界面下连接 USB 操作。</span>
         </aside>
 
@@ -475,9 +510,9 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/lang.js?v=20260818dondji"></script>
+  <script src="js/lang.js?v=20260818bootlabel"></script>
   <script src="js/gb2312_codec.js?v=20260722cnfix"></script>
-  <script src="js/flash.js?v=20260818dondji"></script>
+  <script src="js/flash.js?v=20260818bootlabel"></script>
   <script>
   (function() {
     var coffeeBtn = document.getElementById('coffeeBtn');

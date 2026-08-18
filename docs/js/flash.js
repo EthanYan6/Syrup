@@ -227,6 +227,7 @@ let serialRxTotalBytes = 0;
 let isFlashing = false, isFontFlashing = false, isDumping = false, isRestoring = false;
 let isBackupCfg = false, isRestoreCfg = false;
 let isWritefreqBusy = false;
+let isBasicinfoBusy = false;
 
 // ========== UI ==========
 const $ = id => document.getElementById(id);
@@ -860,7 +861,7 @@ async function requestDeviceInfoForCalib(purpose) {
   const rawRx = serialRxTotalBytes;
   if (sawBootloaderNotify) {
     throw new Error(
-      '超时：当前像是 Bootloader 刷机界面（收到 0x0518）。请正常开机进入信道/菜单界面后再做校准/字库/写频；仅「刷固件」才需要按住 PTT 进 BOOT。'
+      '超时：当前像是 Bootloader 刷机界面（收到 0x0518）。请正常开机进入信道/菜单界面后再做校准/字库/写频/基础信息；仅「刷固件」才需要按住 PTT 进 BOOT。'
     );
   }
   if (!sawAnyMessage) {
@@ -1950,6 +1951,10 @@ if (!('serial' in navigator)) {
   const wfWrite = $('writefreqWriteBtn');
   if (wfRead) wfRead.disabled = true;
   if (wfWrite) wfWrite.disabled = true;
+  const biRead = $('basicinfoReadBtn');
+  const biWrite = $('basicinfoWriteBtn');
+  if (biRead) biRead.disabled = true;
+  if (biWrite) biWrite.disabled = true;
 }
 
 // ========== VERSION TIMELINE ==========
@@ -4370,6 +4375,425 @@ if (writefreqWriteBtnEl) {
     writefreqWriteToDevice();
   });
 }
+
+// ========== BASIC INFO (DTMF UP / DOWN codes, settings.c) ==========
+// SETTINGS_LoadEepromDtmf:
+//   上行码 DTMF_UP_CODE   @ 0x00A0F8 + 0x18 = 0x00A110，16 字节
+//   下行码 DTMF_DOWN_CODE @ 0x00A0F8 + 0x28 = 0x00A120，16 字节
+// 与菜单 MENU_UPCODE / MENU_DWCODE 对应；开机时载入 gEeprom，故写入后需重启。
+const BASICINFO_DTMF_CODE_SIZE = 16;
+const BASICINFO_DTMF_CODE_MAX_CHARS = 15;
+const BASICINFO_DTMF_UP_ADDR = 0x00A110;
+const BASICINFO_DTMF_DOWN_ADDR = 0x00A120;
+const BASICINFO_DTMF_CHAR_RE = /^[0-9A-D*#]+$/;
+/** Mangosteen 自定义文案：0x00A0C8，32 字节（至 DTMF 区前） */
+const BASICINFO_HOME_LABEL_ADDR = 0x00A0C8;
+const BASICINFO_HOME_LABEL_SIZE = 32;
+const BASICINFO_HOME_LABEL_MAX_BYTES = 31;
+const BASICINFO_HOME_LCD_WIDTH = 128;
+const BASICINFO_HOME_LATIN_ADVANCE = 7;
+const BASICINFO_HOME_CJK_ADVANCE = 13;
+
+function basicinfoT(key, fallback, params) {
+  if (window.t) {
+    return window.t(key, params);
+  }
+  return fallback;
+}
+
+function basicinfoShowValidation(text, show) {
+  const el = $('basicinfoValidation');
+  if (!el) {
+    return;
+  }
+  if (show) {
+    el.style.display = 'block';
+    el.textContent = text;
+  } else {
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+}
+
+function basicinfoNormalizeDtmfInput(raw) {
+  return String(raw || '').trim().toUpperCase();
+}
+
+function basicinfoIsValidDtmfCode(text) {
+  if (!text) {
+    return false;
+  }
+  if (text.length > BASICINFO_DTMF_CODE_MAX_CHARS) {
+    return false;
+  }
+  return BASICINFO_DTMF_CHAR_RE.test(text);
+}
+
+function basicinfoSanitizeDtmfTyping(raw) {
+  const upper = String(raw || '').toUpperCase();
+  let out = '';
+  let i = 0;
+  for (; i < upper.length; i++) {
+    const ch = upper.charAt(i);
+    if (!BASICINFO_DTMF_CHAR_RE.test(ch)) {
+      continue;
+    }
+    if (out.length >= BASICINFO_DTMF_CODE_MAX_CHARS) {
+      break;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function basicinfoEncodeDtmfCode(text) {
+  const buf = new Uint8Array(BASICINFO_DTMF_CODE_SIZE);
+  const s = basicinfoNormalizeDtmfInput(text);
+  let i = 0;
+  for (; i < s.length && i < BASICINFO_DTMF_CODE_MAX_CHARS; i++) {
+    buf[i] = s.charCodeAt(i);
+  }
+  return buf;
+}
+
+function basicinfoDecodeDtmfCode(bytes) {
+  if (!bytes) {
+    return '';
+  }
+  let out = '';
+  let i = 0;
+  const len = Math.min(bytes.length, BASICINFO_DTMF_CODE_SIZE);
+  for (; i < len; i++) {
+    const b = bytes[i];
+    if (b === 0 || b === 0xFF) {
+      break;
+    }
+    out += String.fromCharCode(b);
+  }
+  return basicinfoNormalizeDtmfInput(out);
+}
+
+function basicinfoHomeLabelPixelWidth(text) {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(String(text || ''));
+  let total = 0;
+  let i = 0;
+  while (i < bytes.length) {
+    const b = bytes[i];
+    if (b >= 0xE4 && b <= 0xEF && i + 2 < bytes.length) {
+      total += BASICINFO_HOME_CJK_ADVANCE;
+      i += 3;
+    } else {
+      total += BASICINFO_HOME_LATIN_ADVANCE;
+      i += 1;
+    }
+  }
+  if (total > 0) {
+    total -= 1;
+  }
+  return total;
+}
+
+function basicinfoFitHomeLabel(raw) {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder('utf-8', { fatal: false });
+  const src = encoder.encode(String(raw || ''));
+  const kept = [];
+  let i = 0;
+  while (i < src.length) {
+    let glen = 1;
+    if (src[i] >= 0xE4 && src[i] <= 0xEF && i + 2 < src.length) {
+      glen = 3;
+    } else if (src[i] >= 0xC0 && src[i] < 0xE0 && i + 1 < src.length) {
+      glen = 2;
+    }
+    const next = new Uint8Array(kept.length + glen);
+    let k = 0;
+    for (; k < kept.length; k++) {
+      next[k] = kept[k];
+    }
+    let g = 0;
+    for (; g < glen; g++) {
+      next[kept.length + g] = src[i + g];
+    }
+    if (next.length > BASICINFO_HOME_LABEL_MAX_BYTES) {
+      break;
+    }
+    const trialText = decoder.decode(next);
+    if (basicinfoHomeLabelPixelWidth(trialText) > BASICINFO_HOME_LCD_WIDTH) {
+      break;
+    }
+    for (g = 0; g < glen; g++) {
+      kept.push(src[i + g]);
+    }
+    i += glen;
+  }
+  return decoder.decode(new Uint8Array(kept));
+}
+
+function basicinfoEncodeHomeLabel(text) {
+  const buf = new Uint8Array(BASICINFO_HOME_LABEL_SIZE);
+  const fitted = basicinfoFitHomeLabel(text);
+  const encoded = new TextEncoder().encode(fitted);
+  let i = 0;
+  const n = Math.min(encoded.length, BASICINFO_HOME_LABEL_MAX_BYTES);
+  for (; i < n; i++) {
+    buf[i] = encoded[i];
+  }
+  return buf;
+}
+
+function basicinfoDecodeHomeLabel(bytes) {
+  if (!bytes) {
+    return '';
+  }
+  const cut = [];
+  let i = 0;
+  const len = Math.min(bytes.length, BASICINFO_HOME_LABEL_MAX_BYTES);
+  for (; i < len; i++) {
+    const b = bytes[i];
+    if (b === 0 || b === 0xFF) {
+      break;
+    }
+    cut.push(b);
+  }
+  return new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(cut));
+}
+
+function basicinfoUpdateHomeWidthHint() {
+  const inputEl = $('basicinfoHomeLabel');
+  const hintEl = $('basicinfoHomeWidthHint');
+  if (!hintEl) {
+    return;
+  }
+  const text = inputEl ? inputEl.value : '';
+  const used = basicinfoHomeLabelPixelWidth(text);
+  hintEl.textContent = basicinfoT('basicinfoHomeWidthHint', '屏宽 128px · 已用 ' + used + 'px · 英文最多 18 字 / 汉字最多 9 字', { used: used });
+}
+
+function basicinfoSetBusy(busy) {
+  isBasicinfoBusy = busy;
+  const readBtn = $('basicinfoReadBtn');
+  const writeBtn = $('basicinfoWriteBtn');
+  if (readBtn) {
+    readBtn.disabled = busy;
+  }
+  if (writeBtn) {
+    writeBtn.disabled = busy;
+  }
+}
+
+function basicinfoBindInputFilter(inputEl) {
+  if (!inputEl) {
+    return;
+  }
+  inputEl.addEventListener('input', () => {
+    const cleaned = basicinfoSanitizeDtmfTyping(inputEl.value);
+    if (inputEl.value !== cleaned) {
+      inputEl.value = cleaned;
+    }
+  });
+}
+
+function basicinfoBindHomeLabelFilter(inputEl) {
+  if (!inputEl) {
+    return;
+  }
+  inputEl.addEventListener('input', () => {
+    const fitted = basicinfoFitHomeLabel(inputEl.value);
+    if (inputEl.value !== fitted) {
+      inputEl.value = fitted;
+    }
+    basicinfoUpdateHomeWidthHint();
+  });
+  basicinfoUpdateHomeWidthHint();
+}
+
+async function basicinfoReadFromDevice() {
+  if (isBasicinfoBusy) {
+    return;
+  }
+  basicinfoShowValidation('', false);
+  basicinfoSetBusy(true);
+  $('progressContainer').style.display = 'block';
+  updateProgress(0);
+  try {
+    if (!port) {
+      await connect();
+    }
+    readBuffer = [];
+    await sleep(800);
+    const session = await requestDeviceInfoForCalib(basicinfoT('tabBasicinfo', '基础信息'));
+    const sessionTs = session.timestamp;
+    updateProgress(30);
+    const upRaw = await spiFlashReadChunk(sessionTs, BASICINFO_DTMF_UP_ADDR, BASICINFO_DTMF_CODE_SIZE);
+    if (!upRaw || upRaw.length !== BASICINFO_DTMF_CODE_SIZE) {
+      throw new Error('读取上行码失败 @ 0x' + BASICINFO_DTMF_UP_ADDR.toString(16).toUpperCase());
+    }
+    updateProgress(70);
+    const downRaw = await spiFlashReadChunk(sessionTs, BASICINFO_DTMF_DOWN_ADDR, BASICINFO_DTMF_CODE_SIZE);
+    if (!downRaw || downRaw.length !== BASICINFO_DTMF_CODE_SIZE) {
+      throw new Error('读取下行码失败 @ 0x' + BASICINFO_DTMF_DOWN_ADDR.toString(16).toUpperCase());
+    }
+    updateProgress(85);
+    const homeRaw = await spiFlashReadChunk(sessionTs, BASICINFO_HOME_LABEL_ADDR, BASICINFO_HOME_LABEL_SIZE);
+    if (!homeRaw || homeRaw.length !== BASICINFO_HOME_LABEL_SIZE) {
+      throw new Error('读取开机页显示内容失败 @ 0x' + BASICINFO_HOME_LABEL_ADDR.toString(16).toUpperCase());
+    }
+    const upInput = $('basicinfoUpCode');
+    const downInput = $('basicinfoDownCode');
+    const homeInput = $('basicinfoHomeLabel');
+    if (upInput) {
+      upInput.value = basicinfoDecodeDtmfCode(upRaw);
+    }
+    if (downInput) {
+      downInput.value = basicinfoDecodeDtmfCode(downRaw);
+    }
+    if (homeInput) {
+      homeInput.value = basicinfoFitHomeLabel(basicinfoDecodeHomeLabel(homeRaw));
+    }
+    basicinfoUpdateHomeWidthHint();
+    updateProgress(100);
+    log(basicinfoT('logBasicinfoReadSuccess', '已读取上行码 / 下行码'), 'success');
+  } catch (e) {
+    log(basicinfoT('logBasicinfoReadFailed', '基础信息读取失败: ' + e.message, { msg: e.message }), 'error');
+  } finally {
+    basicinfoSetBusy(false);
+    if (port) {
+      await disconnect();
+    }
+    setTimeout(() => {
+      $('progressContainer').style.display = 'none';
+      updateProgress(0);
+    }, 600);
+  }
+}
+
+async function basicinfoWriteToDevice() {
+  if (isBasicinfoBusy) {
+    return;
+  }
+  const upInput = $('basicinfoUpCode');
+  const downInput = $('basicinfoDownCode');
+  const homeInput = $('basicinfoHomeLabel');
+  const upText = basicinfoNormalizeDtmfInput(upInput ? upInput.value : '');
+  const downText = basicinfoNormalizeDtmfInput(downInput ? downInput.value : '');
+  const homeText = basicinfoFitHomeLabel(homeInput ? homeInput.value : '');
+  const upName = basicinfoT('basicinfoUpCode', '上行码');
+  const downName = basicinfoT('basicinfoDownCode', '下行码');
+  const homeName = basicinfoT('basicinfoHomeLabel', '开机页显示内容');
+  const errors = [];
+  if (upText && !basicinfoIsValidDtmfCode(upText)) {
+    errors.push(basicinfoT('basicinfoInvalidCode', upName + '无效：仅允许 0-9、A-D、*、#，最长 15 位。', { name: upName }));
+  }
+  if (downText && !basicinfoIsValidDtmfCode(downText)) {
+    errors.push(basicinfoT('basicinfoInvalidCode', downName + '无效：仅允许 0-9、A-D、*、#，最长 15 位。', { name: downName }));
+  }
+  if (!upText && !downText && !homeText) {
+    errors.push(basicinfoT('basicinfoNeedOneCode', '请至少填写一项：上行码、下行码或开机页显示内容。'));
+  }
+  if (errors.length > 0) {
+    const joined = errors.join('\n');
+    basicinfoShowValidation(joined, true);
+    log(joined, 'error');
+    return;
+  }
+  basicinfoShowValidation('', false);
+  if (upInput) {
+    upInput.value = upText;
+  }
+  if (downInput) {
+    downInput.value = downText;
+  }
+  if (homeInput) {
+    homeInput.value = homeText;
+  }
+  basicinfoUpdateHomeWidthHint();
+  basicinfoSetBusy(true);
+  $('progressContainer').style.display = 'block';
+  updateProgress(0);
+  try {
+    if (!port) {
+      await connect();
+    }
+    readBuffer = [];
+    await sleep(800);
+    const session = await requestDeviceInfoForCalib(basicinfoT('tabBasicinfo', '基础信息'));
+    const sessionTs = session.timestamp;
+    let wroteCount = 0;
+    if (upText) {
+      log(basicinfoT('logBasicinfoWriting', '正在写入上行码…', { name: upName }), 'info');
+      const upOk = await spiFlashWriteChunk(sessionTs, BASICINFO_DTMF_UP_ADDR, basicinfoEncodeDtmfCode(upText));
+      if (!upOk) {
+        throw new Error('写入上行码失败 @ 0x' + BASICINFO_DTMF_UP_ADDR.toString(16).toUpperCase());
+      }
+      wroteCount += 1;
+    } else {
+      log(basicinfoT('logBasicinfoSkipEmpty', '未填写上行码，跳过该项', { name: upName }), 'info');
+    }
+    updateProgress(45);
+    if (downText) {
+      log(basicinfoT('logBasicinfoWriting', '正在写入下行码…', { name: downName }), 'info');
+      const downOk = await spiFlashWriteChunk(sessionTs, BASICINFO_DTMF_DOWN_ADDR, basicinfoEncodeDtmfCode(downText));
+      if (!downOk) {
+        throw new Error('写入下行码失败 @ 0x' + BASICINFO_DTMF_DOWN_ADDR.toString(16).toUpperCase());
+      }
+      wroteCount += 1;
+    } else {
+      log(basicinfoT('logBasicinfoSkipEmpty', '未填写下行码，跳过该项', { name: downName }), 'info');
+    }
+    updateProgress(70);
+    if (homeText) {
+      log(basicinfoT('logBasicinfoWriting', '正在写入开机页显示内容…', { name: homeName }), 'info');
+      const homeOk = await spiFlashWriteChunk(sessionTs, BASICINFO_HOME_LABEL_ADDR, basicinfoEncodeHomeLabel(homeText));
+      if (!homeOk) {
+        throw new Error('写入开机页显示内容失败 @ 0x' + BASICINFO_HOME_LABEL_ADDR.toString(16).toUpperCase());
+      }
+      wroteCount += 1;
+    } else {
+      log(basicinfoT('logBasicinfoSkipEmpty', '未填写开机页显示内容，跳过该项', { name: homeName }), 'info');
+    }
+    updateProgress(90);
+    if (wroteCount === 0) {
+      throw new Error(basicinfoT('basicinfoNeedOneCode', '请至少填写上行码或下行码。'));
+    }
+    log(basicinfoT('logBasicinfoWriteSuccess', '已写入基础信息（上行码 / 下行码），设备将重启以加载菜单设置'), 'success');
+    log(basicinfoT('logRebootingDevice', '正在重启设备以加载新信道数据…'), 'info');
+    await sendMessage(createMessage(MSG_REBOOT, 0));
+    await sleep(500);
+    log(basicinfoT('logRebootSent', '已发送重启指令（设备将自动复位）'), 'success');
+    updateProgress(100);
+  } catch (e) {
+    log(basicinfoT('logBasicinfoWriteFailed', '基础信息写入失败: ' + e.message, { msg: e.message }), 'error');
+  } finally {
+    basicinfoSetBusy(false);
+    if (port) {
+      await disconnect();
+    }
+    setTimeout(() => {
+      $('progressContainer').style.display = 'none';
+      updateProgress(0);
+    }, 600);
+  }
+}
+
+const basicinfoReadBtnEl = $('basicinfoReadBtn');
+if (basicinfoReadBtnEl) {
+  basicinfoReadBtnEl.addEventListener('click', () => {
+    basicinfoReadFromDevice();
+  });
+}
+const basicinfoWriteBtnEl = $('basicinfoWriteBtn');
+if (basicinfoWriteBtnEl) {
+  basicinfoWriteBtnEl.addEventListener('click', () => {
+    basicinfoWriteToDevice();
+  });
+}
+basicinfoBindInputFilter($('basicinfoUpCode'));
+basicinfoBindInputFilter($('basicinfoDownCode'));
+basicinfoBindHomeLabelFilter($('basicinfoHomeLabel'));
+window.basicinfoUpdateHomeWidthHint = basicinfoUpdateHomeWidthHint;
+
 const writefreqExportBtnEl = $('writefreqExportBtn');
 if (writefreqExportBtnEl) {
   writefreqExportBtnEl.addEventListener('click', () => {

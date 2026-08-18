@@ -106,6 +106,7 @@
       'tabFont': '刷字库',
       'tabRestore': '恢复校准',
       'tabWritefreq': '写频',
+      'tabBasicinfo': '基础信息',
       'tabLogo': '开机图片',
       'tabBackupcfg': '备份配置',
       'tabRestorecfg': '恢复配置',
@@ -224,6 +225,24 @@
       'prevPage': '上一页',
       'nextPage': '下一页',
       'freqPageInfoText': '共 {total} 条 · 已填写 {filled} 条 · 第 {cur} / {pages} 页 · 每页 {size} 信道',
+
+      // Basic info (DTMF up/down codes)
+      'basicinfoNote': '提示：仅适配 Syrup 固件。写入后改菜单「上行码 / 下行码」，以及开机页最后一行（默认 BD1AHN）。设备会重启以生效。请先正常开机进入使用界面再连接 USB。',
+      'basicinfoUpCode': '上行码',
+      'basicinfoDownCode': '下行码',
+      'basicinfoHomeLabel': '开机页显示内容',
+      'basicinfoHomePlaceholder': '默认 BD1AHN，支持中英文',
+      'basicinfoHomeWidthHint': '屏宽 128px · 已用 {used}px · 英文最多 18 字 / 汉字最多 9 字',
+      'basicinfoCodePlaceholder': '0-9 A-D * #，最长 15 位',
+      'basicinfoHint': '上行/下行码：0-9、A-D、*、#。开机页内容按 128 像素屏宽限制（英文最多 18 字，汉字最多 9 字）。可只填需要改的项。',
+      'basicinfoInvalidCode': '{name}无效：仅允许 0-9、A-D、*、#，最长 15 位。',
+      'basicinfoNeedOneCode': '请至少填写一项：上行码、下行码或开机页显示内容。',
+      'logBasicinfoReadFailed': '基础信息读取失败: {msg}',
+      'logBasicinfoReadSuccess': '已读取上行码 / 下行码 / 开机页显示内容',
+      'logBasicinfoWriteFailed': '基础信息写入失败: {msg}',
+      'logBasicinfoWriteSuccess': '已写入基础信息，设备将重启以加载设置',
+      'logBasicinfoSkipEmpty': '未填写{name}，跳过该项',
+      'logBasicinfoWriting': '正在写入{name}…',
     
     // Log messages
     'logRequestSerial': '请求串口...',
@@ -428,7 +447,7 @@
       'browserNote': '需要 Chrome / Edge / Opera 浏览器。',
       'flashFirmwareBoot': '仅刷固件',
       'enterBootMode': '需进入 BOOT 模式（按住 PTT 开机）。',
-      'otherOperations': '备份校准、校验校准、恢复校准、写频',
+      'otherOperations': '备份校准、校验校准、恢复校准、写频、基础信息',
       'normalMode': '均在正常开机使用界面下连接 USB 操作。',
       'footerDev': '固件 & 工具由 BD1AHN 开发',
       'footerUVTools': 'UVTools2',
@@ -543,6 +562,7 @@
       'tabFont': 'Flash Font',
       'tabRestore': 'Restore Calib',
       'tabWritefreq': 'Freq Program',
+      'tabBasicinfo': 'Basic Info',
       'tabLogo': 'Boot Logo',
       'tabBackupcfg': 'Backup Config',
       'tabRestorecfg': 'Restore Config',
@@ -664,6 +684,24 @@
       'prevPage': 'Previous',
       'nextPage': 'Next',
       'freqPageInfoText': 'Total {total} · Filled {filled} · Page {cur} / {pages} · {size} channels per page',
+
+      // Basic info (DTMF up/down codes)
+      'basicinfoNote': 'Tip: Syrup only. Writes menu UPCode / DWCode and the boot-screen last line (default BD1AHN), then reboots to apply. Power on normally before connecting USB.',
+      'basicinfoUpCode': 'UP Code',
+      'basicinfoDownCode': 'DW Code',
+      'basicinfoHomeLabel': 'Boot-screen text',
+      'basicinfoHomePlaceholder': 'Default BD1AHN; English/Chinese',
+      'basicinfoHomeWidthHint': 'LCD 128px · used {used}px · max 18 Latin / 9 Chinese',
+      'basicinfoCodePlaceholder': '0-9 A-D * #, max 15 chars',
+      'basicinfoHint': 'UP/DW: 0-9, A-D, *, #. Boot-screen text is limited by 128px width (18 Latin or 9 Chinese). Empty fields are left unchanged.',
+      'basicinfoInvalidCode': '{name} is invalid: use 0-9, A-D, *, # (max 15 chars).',
+      'basicinfoNeedOneCode': 'Enter at least one of: UP code, DW code, or boot-screen text.',
+      'logBasicinfoReadFailed': 'Basic info read failed: {msg}',
+      'logBasicinfoReadSuccess': 'Read UP / DW codes and boot-screen text',
+      'logBasicinfoWriteFailed': 'Basic info write failed: {msg}',
+      'logBasicinfoWriteSuccess': 'Wrote basic info; device will reboot to load settings',
+      'logBasicinfoSkipEmpty': '{name} is empty, skipped',
+      'logBasicinfoWriting': 'Writing {name}…',
     
     // Log messages
     'logRequestSerial': 'Requesting serial port...',
@@ -867,7 +905,7 @@
       'browserNote': 'Requires Chrome / Edge / Opera browser.',
       'flashFirmwareBoot': 'Only firmware flash',
       'enterBootMode': 'requires entering BOOT mode (hold PTT while powering on).',
-      'otherOperations': 'Calib backup/check/restore, writefreq',
+      'otherOperations': 'Calib backup/check/restore, writefreq, basic info',
       'normalMode': 'all operate in normal usage interface with USB connection.',
       'footerDev': 'Firmware & Tools developed by BD1AHN',
       'footerUVTools': 'UVTools2',
@@ -986,6 +1024,9 @@
       }
       if (typeof window.writefreqUpdatePaginationUI === 'function') {
         window.writefreqUpdatePaginationUI();
+      }
+      if (typeof window.basicinfoUpdateHomeWidthHint === 'function') {
+        window.basicinfoUpdateHomeWidthHint();
       }
     } catch (wfErr) {}
 

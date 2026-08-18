@@ -97,35 +97,11 @@ void SETTINGS_InitEEPROM(void)
 
             PY25Q16_WriteBuffer(0x00A158, displayByte, sizeof(displayByte), false);
 
-            // 4. Reset logo lines (clear to null for strlen() == 0)
-
-            char logoLines[32];
-            PY25Q16_ReadBuffer(0x00A0C8, logoLines, sizeof(logoLines));
-
-            bool needsWrite = false;
-
-            for (int line = 0; line < 2; line++) {
-                int offset = line * 16;
-                
-                for (int i = 0; i < 16; i++) {
-                    char c = logoLines[offset + i];
-                    if (c == 0) {
-                        break;
-                    }
-                    if (c < 0x20 || c > 0x7E) {
-                        memset(logoLines + offset, 0, 16);
-                        needsWrite = true;
-                        break;
-                    }
-                }
-            }
-
-            if (needsWrite) {
-                PY25Q16_WriteBuffer(0x00A0C8, logoLines, sizeof(logoLines), false);
-            }
+            // 4. Home label @ 0x00A0C8 is loaded below (UTF-8); do not ASCII-wipe it.
 
             // 5. Reset dBmCorrTable
             int8_t buf[7];
+            bool needsWrite = true;
             PY25Q16_ReadBuffer(0x00A0B9, (uint8_t *)buf, 7);
 
             needsWrite = true;
@@ -313,6 +289,20 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     gEeprom.REPEATER_TAIL_TONE_ELIMINATION = (Data[2] < 11) ? Data[2] : 0;
     gEeprom.TX_VFO                         = (Data[3] <  2) ? Data[3] : 0;
     gEeprom.BATTERY_TYPE                   = (Data[4] < BATTERY_TYPE_UNKNOWN) ? Data[4] : BATTERY_TYPE_1600_MAH;
+
+    {
+        uint8_t i;
+        uint8_t raw[HOME_LABEL_FLASH_SIZE];
+
+        memset(gEeprom.HOME_LABEL, 0, sizeof(gEeprom.HOME_LABEL));
+        PY25Q16_ReadBuffer(HOME_LABEL_FLASH_ADDR, raw, sizeof(raw));
+        for (i = 0; i < HOME_LABEL_MAX_BYTES; i++) {
+            if (raw[i] == 0x00u || raw[i] == 0xFFu)
+                break;
+            gEeprom.HOME_LABEL[i] = (char)raw[i];
+        }
+        gEeprom.HOME_LABEL[HOME_LABEL_MAX_BYTES] = 0;
+    }
 
     // 0ED0..0ED7
     PY25Q16_ReadBuffer(0x00A0A8 + 0x40, Data, 8);
@@ -1049,6 +1039,9 @@ void SETTINGS_SaveSettings(void)
     State[3] = gEeprom.TX_VFO;
     State[4] = gEeprom.BATTERY_TYPE;
 
+    memset(SecBuf + 0x20, 0, HOME_LABEL_FLASH_SIZE);
+    memcpy(SecBuf + 0x20, gEeprom.HOME_LABEL, HOME_LABEL_MAX_BYTES);
+
     // 0x0ED0
     State = SecBuf + 0x40;
     State[0] = gEeprom.DTMF_SIDE_TONE;
@@ -1289,6 +1282,13 @@ void SETTINGS_SaveChannelName(uint16_t channel, const char * name)
     memcpy(buf, name, len);
     // Slot @ 0x004000 + ch*16 (16 B)
     PY25Q16_WriteBuffer(0x004000 + offset, buf, 0x10, false);
+}
+
+const char *SETTINGS_HomeLabelText(void)
+{
+    if (gEeprom.HOME_LABEL[0] == 0)
+        return HOME_LABEL_DEFAULT;
+    return gEeprom.HOME_LABEL;
 }
 
 void SETTINGS_UpdateChannel(uint16_t channel, const VFO_Info_t *pVFO, bool keep)
