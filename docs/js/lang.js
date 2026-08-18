@@ -35,7 +35,7 @@
       'stepCalibCheck': '校验校准',
       'stepCalibCheckTooltip': '对比设备与备份校准，确认数据正常后再恢复。',
       'calibCheckTabDesc': '请先正常开机进入使用界面后再连接 USB。可读取设备校准、加载备份并对比。',
-      'fwDownloadHint': '「远程获取」将从 GitHub Releases 下载最新 Syrup 固件。',
+      'fwDownloadHint': '「远程获取」优先加载本站 docs/firmware 中随每次打包更新的最新 Syrup 固件。',
       'calibCheckDescCol': '校准解读',
 
       'pageTitleHelp': '使用手册 · 小甜水刷机网站',
@@ -472,7 +472,7 @@
       'stepCalibCheck': 'Verify Calib',
       'stepCalibCheckTooltip': 'Compare device and backup calibration before restore.',
       'calibCheckTabDesc': 'Power on normally, then connect USB. Read device calib, load backup, and compare.',
-      'fwDownloadHint': 'Remote fetch downloads the latest Syrup firmware from GitHub Releases.',
+      'fwDownloadHint': 'Remote fetch loads the latest Syrup firmware packaged into docs/firmware with each build.',
       'calibCheckDescCol': 'Meaning',
 
       'pageTitleHelp': 'User Manual · Syrup Flasher',

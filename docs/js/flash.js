@@ -603,12 +603,7 @@ function createMessage(msgType, dataLen) {
 }
 
 async function sendMessage(msg) {
-  if (!writer) {
-    throw new Error('串口未就绪（writer 为空）');
-  }
-  const packet = makePacket(msg);
-  await writer.ready;
-  await writer.write(packet);
+  await writer.write(makePacket(msg));
 }
 
 function makePacket(msg) {
@@ -629,34 +624,14 @@ function fetchMessage(buf) {
   if (buf.length < 8) return null;
   let pb = -1;
   for (let i = 0; i < buf.length - 1; i++) {
-    if (buf[i] === 0xab && buf[i + 1] === 0xcd) {
-      pb = i;
-      break;
-    }
+    if (buf[i] === 0xab && buf[i + 1] === 0xcd) { pb = i; break; }
   }
-  if (pb === -1) {
-    // 保留末尾 7 字节，避免半包同步头被整缓冲清空
-    if (buf.length > 7) {
-      buf.splice(0, buf.length - 7);
-    }
-    return null;
-  }
-  if (pb > 0) {
-    buf.splice(0, pb);
-    pb = 0;
-  }
+  if (pb === -1) { buf.length = 0; return null; }
   if (buf.length - pb < 8) return null;
   const msgLen = (buf[pb + 3] << 8) | buf[pb + 2];
-  if (msgLen > 2048) {
-    buf.splice(0, 2);
-    return null;
-  }
   const pe = pb + 6 + msgLen;
   if (buf.length < pe + 2) return null;
-  if (buf[pe] !== 0xdc || buf[pe + 1] !== 0xba) {
-    buf.splice(0, 2);
-    return null;
-  }
+  if (buf[pe] !== 0xdc || buf[pe + 1] !== 0xba) { buf.splice(0, pb + 2); return null; }
   const msgBuf = new Uint8Array(msgLen + 2);
   for (let i = 0; i < msgLen + 2; i++) msgBuf[i] = buf[pb + 4 + i];
   obfuscate(msgBuf, 0, msgLen + 2);
@@ -689,7 +664,7 @@ async function connect() {
   }
   port = await navigator.serial.requestPort();
   await port.open({ baudRate: BAUDRATE, bufferSize: 8192 });
-  // UV-K1/K5V3 CDC：部分环境下未拉高 DTR 时主机收不到固件应答；Web Serial 需显式置位
+  // 校准/写频（APP 固件）需要 DTR；刷固件走下面的 connectBootloader，不拉 DTR
   try {
     if (typeof port.setSignals === 'function') {
       await port.setSignals({ dataTerminalReady: true, requestToSend: true });
@@ -707,6 +682,19 @@ async function connect() {
   log(window.t ? window.t('logConnected') : '已连接', 'success');
 }
 
+/** 刷固件用：与 Dondji docs/js/flash.js 的 connect() 一致 */
+async function connectBootloader() {
+  log(window.t ? window.t('logRequestSerial') : '请求串口...', 'info');
+  port = await navigator.serial.requestPort();
+  await port.open({ baudRate: BAUDRATE });
+  reader = port.readable.getReader();
+  writer = port.writable.getWriter();
+  isReading = true;
+  readLoop();
+  await sleep(500);
+  log(window.t ? window.t('logConnected') : '已连接', 'success');
+}
+
 async function disconnect() {
   isReading = false;
   if (reader) { try { await reader.cancel(); } catch{} try { reader.releaseLock(); } catch{} reader = null; }
@@ -720,11 +708,9 @@ async function readLoop() {
     while (isReading && reader) {
       const { value, done } = await reader.read();
       if (done) break;
-      if (value && value.length) {
+      if (value?.length) {
         serialRxTotalBytes += value.length;
-        for (let i = 0; i < value.length; i++) {
-          readBuffer.push(value[i]);
-        }
+        readBuffer.push(...value);
       }
     }
   } catch (e) {
@@ -909,11 +895,14 @@ on('firmwareFile', 'change', e => {
 on('flashBtn', 'click', async () => {
   if (!firmwareData || isFlashing) return;
   isFlashing = true;
-  if ($('flashBtn')) $('flashBtn').disabled = true;
+  $('flashBtn').disabled = true;
   $('progressContainer').style.display = 'block';
   updateProgress(0);
   try {
-    if (!port) await connect();
+    if (port) {
+      try { await disconnect(); } catch (e) {}
+    }
+    await connectBootloader();
     readBuffer = [];
     await sleep(1000);
     const dev = await waitForDeviceInfo();
@@ -931,7 +920,7 @@ on('flashBtn', 'click', async () => {
       v.setUint16(10, pageCount, true);
       const off = page * 256;
       const len = Math.min(256, firmwareData.length - off);
-      for (let i = 0; i < len; i++) msg[16+i] = firmwareData[off+i];
+      for (let i = 0; i < len; i++) msg[16 + i] = firmwareData[off + i];
       await sendMessage(msg);
       let ok = false;
       for (let i = 0; i < 300 && !ok; i++) {
@@ -945,7 +934,7 @@ on('flashBtn', 'click', async () => {
           if (rp !== page) continue;
           if (err !== 0) { retry++; if (retry > 3) throw new Error('页面 ' + page + ' 错误: ' + err); break; }
           ok = true; retry = 0;
-          if ((page+1) % 20 === 0 || page === pageCount-1) log(window.t ? window.t('logFlashProgress', {page: page+1, total: pageCount}) : '页面 ' + (page+1) + '/' + pageCount, 'success');
+          if ((page + 1) % 20 === 0 || page === pageCount - 1) log(window.t ? window.t('logFlashProgress', {page: page + 1, total: pageCount}) : '页面 ' + (page + 1) + '/' + pageCount, 'success');
         }
       }
       if (ok) page++;
@@ -953,7 +942,7 @@ on('flashBtn', 'click', async () => {
     }
     updateProgress(100);
     log(window.t ? window.t('logFlashComplete') : '固件刷入完成！', 'success');
-  } catch(e) {
+  } catch (e) {
     log(window.t ? window.t('logError', {msg: e.message}) : '错误: ' + e.message, 'error');
   } finally {
     isFlashing = false;
@@ -1018,12 +1007,17 @@ function firmwareCollectLocalMirrorCandidateUrls() {
     seenHref.add(urlHref);
     orderedUrls.push(urlHref);
   }
+  const cacheBust = String(Date.now());
   const flashJsUrl = getFlashJsAbsoluteUrl();
   if (flashJsUrl) {
-    pushUnique(new URL('../firmware/syrup.bin', flashJsUrl).href);
+    const fromScript = new URL('../firmware/syrup.bin', flashJsUrl);
+    fromScript.searchParams.set('t', cacheBust);
+    pushUnique(fromScript.href);
   }
   const docDirectoryBase = getDocumentDirectoryBaseUrlString();
-  pushUnique(new URL('firmware/syrup.bin', docDirectoryBase).href);
+  const fromDoc = new URL('firmware/syrup.bin', docDirectoryBase);
+  fromDoc.searchParams.set('t', cacheBust);
+  pushUnique(fromDoc.href);
   return orderedUrls;
 }
 
@@ -1032,7 +1026,7 @@ async function firmwareFetchLocalMirrorOnly() {
   let lastErr = null;
   for (let i = 0; i < candidateUrls.length; i++) {
     try {
-      const response = await fetch(candidateUrls[i]);
+      const response = await fetch(candidateUrls[i], { cache: 'no-store' });
       if (!response.ok) {
         lastErr = new Error('HTTP ' + response.status + ' for ' + candidateUrls[i]);
         continue;

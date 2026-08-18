@@ -140,6 +140,17 @@ add_custom_command(
     COMMENT "Generating .bin file"
 )
 
+# Replace docs/firmware/*.bin with this build so the flasher "远程获取" is always current.
+add_custom_command(
+    TARGET ${EXE_NAME}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+            "-DDOCS_FIRMWARE_DIR=${CMAKE_SOURCE_DIR}/docs/firmware"
+            "-DFIRMWARE_BIN=${CMAKE_CURRENT_BINARY_DIR}/${EXE_NAME}.bin"
+            -P "${CMAKE_SOURCE_DIR}/cmake/copy_firmware_to_docs.cmake"
+    COMMENT "Updating docs/firmware/syrup.bin"
+)
+
 if(DEV)
     add_custom_command(
         TARGET ${EXE_NAME}
