@@ -54,14 +54,15 @@ size_t UI_SmallStringPixelWidth(const char *pString);
 /** One small-font line: 12px if the line has CJK, else 8px (Latin framebuffer row). */
 uint8_t UI_SmallLinePixelHeight(const char *pString);
 /** Top Y of 7px Latin glyphs inside [y_start, y_end] (inclusive).
- *  mixed_cjk: extra drop matching UI_PrintStringSmallAtPixel (channel-name band uses 0). */
+ *  mixed_cjk: place Latin in the Han 12px box (optical vertical center).
+ *  latin_down_when_mixed: 0 = centered with Han; >0 = extra pixels down (baseline tweak). */
 uint8_t UI_SmallLatinPixelY(uint8_t y_pixel_start, uint8_t y_pixel_end, bool mixed_cjk, uint8_t latin_down_when_mixed);
 void UI_PrintStringSmallAtPixel(const char *pString, uint8_t x_start, uint8_t x_end, uint8_t y_pixel_start, uint8_t y_pixel_end, uint8_t latin_down_when_mixed);
 /** Stack lines in [y_pixel_start, y_pixel_end] (inclusive). Each line uses UI_SmallLinePixelHeight; gap_px between lines. */
 void UI_PrintStringSmallStackedAtPixel(const char *const *lines, uint8_t n_lines, uint8_t x_start, uint8_t x_end, uint8_t y_pixel_start, uint8_t y_pixel_end, uint8_t gap_px, uint8_t latin_down_when_mixed);
-/** Key-lock unlock hint: mixed CJK+Latin; latin_down relative to UI_PrintStringSmallAtPixel(..., 3) */
+/** Key-lock unlock hint: mixed CJK+Latin; optical center (latin_down=0) */
 void UI_PrintStringSmallAtPixelKeyLockUnlockHint(const char *pString, uint8_t x_start, uint8_t x_end, uint8_t y_pixel_start, uint8_t y_pixel_end);
-/** 12px vertical band for channel names (CJK+Latin mix), latin_down=0 */
+/** 12px vertical band for channel names (CJK+Latin mix), latin_down=0 (optical center) */
 void UI_PrintStringSmallChannelNameBand(const char *pString, uint8_t x_start, uint8_t x_end, uint8_t y_pixel_top);
 void UI_PrintStringSmallAtPixelInverse(const char *pString, uint8_t x_start, uint8_t x_end, uint8_t y_pixel_start, uint8_t y_pixel_end);
 void UI_PrintStringSmallAtPixelCnInverse(const char *pString, uint8_t x_start, uint8_t x_end, uint8_t y_pixel_start, uint8_t y_pixel_end);

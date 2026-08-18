@@ -566,23 +566,31 @@ void UI_PrintStringSmallStackedAtPixel(const char *const *lines, uint8_t n_lines
 uint8_t UI_SmallLatinPixelY(uint8_t y_pixel_start, uint8_t y_pixel_end, bool mixed_cjk, uint8_t latin_down_when_mixed)
 {
     const uint8_t eng_char_height = 7;
+    const uint8_t chn_char_height = 12;
     const uint16_t y_range = (uint16_t)y_pixel_end - (uint16_t)y_pixel_start + 1u;
-    unsigned y_offset = 0;
     uint8_t y_pixel;
 
-    if (y_range >= eng_char_height)
-        y_offset = (unsigned)((y_range - eng_char_height) / 2u);
-    if (y_range >= eng_char_height) {
-        const unsigned max_off = (unsigned)(y_range - eng_char_height);
-        if (y_offset > max_off)
-            y_offset = max_off;
-    }
-    y_pixel = (uint8_t)(y_pixel_start + (uint8_t)y_offset);
-    /* Mixed CJK + Latin: move Latin down to align baseline with Han */
     if (mixed_cjk) {
-        const unsigned add = (unsigned)(latin_down_when_mixed + 1u);
-        if (y_pixel <= (uint8_t)(255u - add))
-            y_pixel = (uint8_t)(y_pixel + add);
+        /* Sit Latin in the same 12px box as Han so mixed lines share one optical center.
+         * latin_down_when_mixed==0: pure vertical center; >0: extra baseline-style drop. */
+        uint8_t chn_top = y_pixel_start;
+        if (y_range >= chn_char_height)
+            chn_top = (uint8_t)(y_pixel_start + (uint8_t)((y_range - chn_char_height) / 2u));
+        y_pixel = (uint8_t)(chn_top + (uint8_t)((chn_char_height - eng_char_height) / 2u));
+        if (latin_down_when_mixed > 0u) {
+            if (y_pixel <= (uint8_t)(255u - latin_down_when_mixed))
+                y_pixel = (uint8_t)(y_pixel + latin_down_when_mixed);
+        }
+    } else {
+        unsigned y_offset = 0;
+        if (y_range >= eng_char_height)
+            y_offset = (unsigned)((y_range - eng_char_height) / 2u);
+        if (y_range >= eng_char_height) {
+            const unsigned max_off = (unsigned)(y_range - eng_char_height);
+            if (y_offset > max_off)
+                y_offset = max_off;
+        }
+        y_pixel = (uint8_t)(y_pixel_start + (uint8_t)y_offset);
     }
     return y_pixel;
 }

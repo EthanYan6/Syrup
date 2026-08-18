@@ -331,31 +331,61 @@ void UI_FM_Tick10ms(void)
 
 void UI_DisplayFM(void)
 {
-	char String[16];
+	char String[24];
 	char *pPrintStr = String;
+#ifdef ENABLE_CHINESE
+	const bool cn = (gUiLanguage == UI_LANGUAGE_CN);
+#endif
 	UI_DisplayClear();
 
 #ifdef ENABLE_FEAT_F4HWN
 	UI_DisplayUnlockKeyboard(5);
 #endif
 
-	UI_PrintString("FM", 2, 0, 0, 8);
+#ifdef ENABLE_CHINESE
+	if (cn)
+		UI_PrintStringSmallAtPixel("收音机", 2, 2, 3u, 14u, 0u);
+	else
+#endif
+		UI_PrintString("FM", 2, 0, 0, 8);
 
 	fm_draw_band_label();
 
 	if (gAskToSave) {
+#ifdef ENABLE_CHINESE
+		pPrintStr = cn ? "保存?" : "SAVE?";
+#else
 		pPrintStr = "SAVE?";
+#endif
 	} else if (gAskToDelete) {
+#ifdef ENABLE_CHINESE
+		pPrintStr = cn ? "删除?" : "DEL?";
+#else
 		pPrintStr = "DEL?";
+#endif
 	} else if (gFM_ScanState == FM_SCAN_OFF) {
 		if (gEeprom.FM_IsMrMode) {
-			sprintf(String, "MR(CH%02u)", gEeprom.FM_SelectedChannel + 1);
+#ifdef ENABLE_CHINESE
+			if (cn)
+				sprintf(String, "存储(台%02u)", gEeprom.FM_SelectedChannel + 1);
+			else
+#endif
+				sprintf(String, "MR(CH%02u)", gEeprom.FM_SelectedChannel + 1);
 			pPrintStr = String;
 		} else {
+#ifdef ENABLE_CHINESE
+			pPrintStr = cn ? "频率" : "VFO";
+#else
 			pPrintStr = "VFO";
+#endif
 			for (unsigned int i = 0; i < FM_CHANNELS_MAX; i++) {
 				if (gEeprom.FM_FrequencyPlaying == gFM_Channels[i]) {
-					sprintf(String, "VFO(CH%02u)", i + 1);
+#ifdef ENABLE_CHINESE
+					if (cn)
+						sprintf(String, "频率(台%02u)", i + 1);
+					else
+#endif
+						sprintf(String, "VFO(CH%02u)", i + 1);
 					pPrintStr = String;
 					break;
 				}
@@ -368,12 +398,27 @@ void UI_DisplayFM(void)
 		pPrintStr = "M-SCAN";
 	}
 
-	UI_PrintString(pPrintStr, 0, 127, 3, 10); // memory, vfo, scan
+#ifdef ENABLE_CHINESE
+	if (cn)
+		UI_PrintStringSmallAtPixel(pPrintStr, 0, 127, 24u, 35u, 0u);
+	else
+#endif
+		UI_PrintString(pPrintStr, 0, 127, 3, 10); // memory, vfo, scan
 
 	if (gAskToSave || (gEeprom.FM_IsMrMode && gInputBoxIndex > 0)) {
-		UI_GenerateChannelString(String, gFM_ChannelPosition);
+#ifdef ENABLE_CHINESE
+		if (cn)
+			sprintf(String, "台-%02u", gFM_ChannelPosition + 1);
+		else
+#endif
+			UI_GenerateChannelString(String, gFM_ChannelPosition);
 	} else if (gAskToDelete) {
-		sprintf(String, "CH-%02u", gEeprom.FM_SelectedChannel + 1);
+#ifdef ENABLE_CHINESE
+		if (cn)
+			sprintf(String, "台-%02u", gEeprom.FM_SelectedChannel + 1);
+		else
+#endif
+			sprintf(String, "CH-%02u", gEeprom.FM_SelectedChannel + 1);
 	} else {
 		if (gInputBoxIndex == 0) {
 			sprintf(String, "%3d.%d", gEeprom.FM_FrequencyPlaying / 10, gEeprom.FM_FrequencyPlaying % 10);
@@ -396,7 +441,12 @@ void UI_DisplayFM(void)
 		return;
 	}
 
-	UI_PrintString(String, 0, 127, 1, 10);
+#ifdef ENABLE_CHINESE
+	if (cn)
+		UI_PrintStringSmallAtPixel(String, 0, 127, 8u, 19u, 0u);
+	else
+#endif
+		UI_PrintString(String, 0, 127, 1, 10);
 
 	fm_eq_reset();
 	s_eq_was_visible = false;
