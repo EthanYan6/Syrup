@@ -94,9 +94,23 @@ int FM_ConfigureChannelState(void)
     return 0;
 }
 
+/* BK4819 is muted and parked on the FM frequency for RSSI metering only.
+ * Speaker audio stays on BK1080; BK4819 AF stays MUTE so it cannot click. */
+static void FM_SyncRssiChip(void)
+{
+    const uint32_t freq_10hz = (uint32_t)gEeprom.FM_FrequencyPlaying * 10000u;
+
+    BK4819_SetAF(BK4819_AF_MUTE);
+    BK4819_ToggleGpioOut(BK4819_GPIO6_PIN2_GREEN, false);
+    BK4819_SetFrequency(freq_10hz);
+    BK4819_PickRXFilterPathBasedOnFrequency(freq_10hz);
+    BK4819_RX_TurnOn();
+}
+
 void FM_SetFrequency(void)
 {
     BK1080_SetFrequency(gEeprom.FM_FrequencyPlaying, gEeprom.FM_Band/*, gEeprom.FM_Space*/);
+    FM_SyncRssiChip();
 }
 
 void FM_TurnOff(void)
@@ -110,7 +124,8 @@ void FM_TurnOff(void)
 
     BK1080_Init0();
 
-    // Enable relevant LNA based on VFO frequency
+    // Restore BK4819 to the active VFO (it was parked on the FM broadcast freq)
+    BK4819_SetFrequency(gRxVfo->freq_config_RX.Frequency);
     BK4819_PickRXFilterPathBasedOnFrequency(gRxVfo->freq_config_RX.Frequency);
 
 
@@ -650,8 +665,7 @@ void FM_Start(void)
     gFM_RestoreCountdown_10ms = 0;
 
     BK1080_Init(gEeprom.FM_FrequencyPlaying, gEeprom.FM_Band/*, gEeprom.FM_Space*/);
-    // Disable UHF LNA, enable VHF LNA
-    BK4819_PickRXFilterPathBasedOnFrequency(10320000); // 103.2 MHz < 280 MHz
+    FM_SyncRssiChip();
 
     FM_AudioPathOn();
 

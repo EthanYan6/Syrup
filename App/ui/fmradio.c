@@ -20,7 +20,7 @@
 
 #include "app/fm.h"
 #include "driver/bk1080.h"
-#include "driver/bk1080-regs.h"
+#include "driver/bk4819.h"
 #include "driver/st7565.h"
 #include "external/printf/printf.h"
 #include "font.h"
@@ -41,9 +41,10 @@
 #define FM_EQ_MAX_BLOCKS   4u
 #define FM_EQ_COLS         (LCD_WIDTH / FM_EQ_PITCH_X)
 #define FM_EQ_PAUSE_GATE   18u
-#define FM_EQ_TICK_PERIOD  5u   /* ~50ms */
+#define FM_EQ_TICK_PERIOD  10u  /* ~100ms; BK4819 SPI RSSI only (no BK1080 I2C) */
 #define FM_EQ_TIP_FALL     5u
-#define FM_EQ_RSSI_WEAK    10u
+#define FM_EQ_DBM_FLOOR    (-110)
+#define FM_EQ_DBM_CEIL     (-40)
 
 static uint8_t s_eq_band[FM_EQ_COLS];
 static uint8_t s_eq_tip[FM_EQ_COLS];
@@ -140,20 +141,24 @@ static uint8_t fm_energy_to_blocks(uint16_t energy)
 
 static uint16_t fm_read_activity(void)
 {
-	const uint16_t status = BK1080_ReadRegister(BK1080_REG_10);
-	const uint16_t reg07  = BK1080_ReadRegister(BK1080_REG_07);
-	const uint8_t  rssi   = (uint8_t)BK1080_REG_10_GET_RSSI(status);
-	const uint8_t  snr    = (uint8_t)BK1080_REG_07_GET_SNR(reg07);
-	const bool     railed = (status & BK1080_REG_10_MASK_AFCRL) != BK1080_REG_10_AFCRL_NOT_RAILED;
-	uint16_t dynamics;
+	/* Meter from muted BK4819 (parked on FM freq). Do not touch BK1080 here —
+	 * its I2C RSSI polling was coupling into the speaker as dense clicks. */
+	int16_t dbm = BK4819_GetRSSI_dBm();
+	int16_t span;
+	int16_t dynamics;
 
-	if (railed || rssi < FM_EQ_RSSI_WEAK)
+	if (dbm <= FM_EQ_DBM_FLOOR)
 		return 0u;
+	if (dbm >= FM_EQ_DBM_CEIL)
+		return 255u;
 
-	dynamics = (uint16_t)rssi + (uint16_t)(snr << 3);
-	if (dynamics > 255u)
-		dynamics = 255u;
-	return dynamics;
+	span = (int16_t)(FM_EQ_DBM_CEIL - FM_EQ_DBM_FLOOR);
+	dynamics = (int16_t)(((int32_t)(dbm - FM_EQ_DBM_FLOOR) * 255) / span);
+	if (dynamics < 0)
+		return 0u;
+	if (dynamics > 255)
+		return 255u;
+	return (uint16_t)dynamics;
 }
 
 static void fm_eq_sample_decay(void)

@@ -314,9 +314,10 @@ static void CheckForIncoming(void)
         return;          // squelch is closed
 
 #ifdef ENABLE_FMRADIO
-    // FM scan in progress: ignore main-channel RX so scanning is not interrupted.
-    // Normal FM listening (FM_SCAN_OFF) still yields to channel signals as before.
-    if (gFmRadioMode && gFM_ScanState != FM_SCAN_OFF)
+    // While FM radio is active, do not yield to BK4819 channel RX.
+    // BK1080 RF couples into BK4819 and falsely opens squelch; yielding would
+    // call APP_StartListening → BK1080_Init0() + audio-path switch → periodic clicks.
+    if (gFmRadioMode)
         return;
 #endif
 
@@ -453,8 +454,8 @@ static void HandleIncoming(void)
 #endif
 
 #ifdef ENABLE_FMRADIO
-    // Defensive: do not leave FM scan for a main-channel signal.
-    if (gFmRadioMode && gFM_ScanState != FM_SCAN_OFF)
+    // Same as CheckForIncoming: never steal FM audio for (often false) channel RX.
+    if (gFmRadioMode)
         return;
 #endif
 
@@ -1623,8 +1624,13 @@ void APP_TimeSlice10ms(void)
     if (gReducedService)
         return;
 
+    // FM mode: skip BK4819 IRQ handling. False sql open/close would still toggle
+    // the green LED GPIO and can couple as faint periodic clicks into the speaker.
     if (gCurrentFunction != FUNCTION_POWER_SAVE || !gRxIdleMode)
-        CheckRadioInterrupts();
+#ifdef ENABLE_FMRADIO
+        if (!gFmRadioMode)
+#endif
+            CheckRadioInterrupts();
 #ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
     if (gActionPickerKey != 0 && FUNCTION_IsRx()) {
         gActionPickerKey = 0;
