@@ -64,6 +64,9 @@ static uint16_t K5VIEWER_Hash(const uint8_t *data)
 
 void K5VIEWER_ParseInput(void)
 {
+    if (SerialConfigInProgress())
+        return;
+
     if (K5VIEWER_IsLocked())
         return;
 
@@ -82,6 +85,9 @@ void K5VIEWER_ParseInput(void)
 
 static void K5VIEWER_Send(const uint8_t *buf, uint16_t len)
 {
+    if (SerialConfigInProgress())
+        return;
+
     if (gUSB_K5ViewerEnabled) {
         cdc_acm_data_send_with_dtr(buf, len);
     } else {
@@ -222,6 +228,9 @@ static void K5VIEWER_Chunk(uint8_t chunkIdx, uint8_t *dest)
 
 void K5VIEWER_Update(bool force)
 {
+    if (SerialConfigInProgress())
+        return;
+
     if (K5VIEWER_IsLocked())
         return;
 
@@ -241,6 +250,9 @@ void K5VIEWER_Update(bool force)
     } else {
         return;
     }
+
+    if (!hasConnectionPing)
+        return;
 
     // Connection is alive — detect reconnection and force full frame
     if (!wasConnected) {

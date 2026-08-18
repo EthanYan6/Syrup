@@ -1,5 +1,7 @@
 #include "usbd_core.h"
 #include "usbd_cdc.h"
+#include "app/uart.h"
+#include <stdbool.h>
 
 /*!< endpoint address */
 #define CDC_IN_EP  0x81
@@ -105,10 +107,17 @@ void usbd_configure_done_callback(void)
     usbd_ep_start_read(CDC_OUT_EP, read_buffer, sizeof(read_buffer));
 }
 
+void cdc_acm_on_rx(void)
+{
+    UART_ServiceCommands();
+}
+
 void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
 {
     cdc_acm_rx_buf_t *rx_buf = &client_rx_buf;
-    if (nbytes && rx_buf->buf)
+    const bool got_data = (nbytes && rx_buf->buf && rx_buf->size);
+
+    if (got_data)
     {
         const uint8_t *buf = read_buffer;
         uint32_t pointer = *rx_buf->write_pointer;
@@ -131,8 +140,10 @@ void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
         *rx_buf->write_pointer = pointer;
     }
 
-    /* setup next out ep read transfer */
     usbd_ep_start_read(CDC_OUT_EP, read_buffer, sizeof(read_buffer));
+
+    if (got_data)
+        cdc_acm_on_rx();
 }
 
 void usbd_cdc_acm_bulk_in(uint8_t ep, uint32_t nbytes)

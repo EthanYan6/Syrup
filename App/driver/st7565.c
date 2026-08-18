@@ -97,14 +97,18 @@ static inline void A0_Reset()
 
 static uint8_t SPI_WriteByte(uint8_t Value)
 {
-    while (!LL_SPI_IsActiveFlag_TXE(SPIx))
+    uint32_t wait = 100000;
+    while (!LL_SPI_IsActiveFlag_TXE(SPIx) && --wait)
         ;
 
     LL_SPI_TransmitData8(SPIx, Value);
 
-    while (!LL_SPI_IsActiveFlag_RXNE(SPIx))
+    wait = 100000;
+    while (!LL_SPI_IsActiveFlag_RXNE(SPIx) && --wait)
         ;
 
+    if (!wait)
+        return 0xFF;
     return LL_SPI_ReceiveData8(SPIx);
 }
 

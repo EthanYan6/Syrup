@@ -1136,12 +1136,6 @@ static void HandleVox(void)
 
 void APP_Update(void)
 {
-#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
-    // Parse incoming packets on every tick so serial keys are never missed,
-    // regardless of whether the screen needs redrawing.
-    K5VIEWER_ParseInput();
-#endif
-
 #ifdef ENABLE_VOICE
     if (gFlagPlayQueuedVoice) {
             AUDIO_PlayQueuedVoice();
@@ -1155,6 +1149,10 @@ void APP_Update(void)
         UART_HandleCommand(UART_PORT_VCP);
         // SCHEDULER_Enable();
     }
+#endif
+
+#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
+    K5VIEWER_ParseInput();
 #endif
 
 #ifdef ENABLE_FEAT_F4HWN

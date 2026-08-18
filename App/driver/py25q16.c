@@ -148,7 +148,8 @@ static void SPI_ReadBuf(uint8_t *Buf, uint32_t Size)
     LL_SPI_Enable(SPIx);
     LL_SPI_EnableDMAReq_TX(SPIx);
 
-    while (!TC_Flag)
+    uint32_t wait = 1000000;
+    while (!TC_Flag && --wait)
         ;
 }
 
@@ -197,17 +198,22 @@ static void SPI_WriteBuf(const uint8_t *Buf, uint32_t Size)
     LL_SPI_Enable(SPIx);
     LL_SPI_EnableDMAReq_TX(SPIx);
 
-    while (!TC_Flag)
+    uint32_t wait = 1000000;
+    while (!TC_Flag && --wait)
         ;
 }
 
 static uint8_t SPI_WriteByte(uint8_t Value)
 {
-    while (!LL_SPI_IsActiveFlag_TXE(SPIx))
+    uint32_t wait = 100000;
+    while (!LL_SPI_IsActiveFlag_TXE(SPIx) && --wait)
         ;
     LL_SPI_TransmitData8(SPIx, Value);
-    while (!LL_SPI_IsActiveFlag_RXNE(SPIx))
+    wait = 100000;
+    while (!LL_SPI_IsActiveFlag_RXNE(SPIx) && --wait)
         ;
+    if (!wait)
+        return 0xFF;
     return LL_SPI_ReceiveData8(SPIx);
 }
 
@@ -232,10 +238,10 @@ void PY25Q16_ReadBuffer(uint32_t Address, void *pBuffer, uint32_t Size)
     SPI_WriteByte(0x03);      // Send read command
     WriteAddr(Address);        // Send address (3 bytes)
 
-    // CRITICAL: Flush RX FIFO before DMA to remove residual data
-    while (LL_SPI_RX_FIFO_EMPTY != LL_SPI_GetRxFIFOLevel(SPIx))
+    uint32_t flush = 256;
+    while (flush-- && LL_SPI_RX_FIFO_EMPTY != LL_SPI_GetRxFIFOLevel(SPIx))
     {
-        LL_SPI_ReceiveData8(SPIx);  // Read and discard
+        LL_SPI_ReceiveData8(SPIx);
     }
 
     if (Size >= 16) {

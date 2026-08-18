@@ -134,7 +134,7 @@
       'downloadCalib': '下载 calibration.dat',
       
       // Restore calibration tab
-      'restoreWarning': '⚠️ 恢复前同样需正常开机进入使用界面后再连接 USB；写入完成后设备会自动重启。Syrup 校准固定写入 0xB000，请使用本站或兼容格式的备份文件（512 字节）。',
+      'restoreWarning': '⚠️ 恢复前同样需正常开机进入使用界面后再连接 USB；写入完成后设备会自动重启。本站读写固定 v5 校准地址 0xB000，请使用本站或兼容格式的备份文件（512 字节）。',
       'selectCalibFile': '选择校准备份文件 (.dat)',
       'restoreCalib': '恢复校准',
       
@@ -197,7 +197,7 @@
       'freqRead': '读取',
       'freqWrite': '写入',
       'freqClear': '清空',
-      'writefreqNote': '提示：仅适配 Syrup 固件。信道名支持英文与中文（UTF-8，最长 15 字节，约 5 个汉字）；调制含 WFM。',
+      'writefreqNote': '提示：仅适配 Syrup 固件。信道名支持英文与中文（UTF-8，最长 15 字节，约 5 个汉字）。',
       'clickSupplement': '点击补充',
       'readFromDevice': '从设备读取',
       'writeToDevice': '写入设备',
@@ -215,7 +215,7 @@
       'freqCTCSS': 'CTCSS',
       'freqOffsetDir': '频差方向',
       'freqOffsetDirSub': 'MENU 频差方向',
-      'freqModeSub': 'FM/AM/USB/WFM',
+      'freqModeSub': 'FM/AM/USB',
       'freqStep': '步进',
       'freqkHz': 'kHz',
       'freqList': '信道列表',
@@ -428,7 +428,7 @@
       'browserNote': '需要 Chrome / Edge / Opera 浏览器。',
       'flashFirmwareBoot': '仅刷固件',
       'enterBootMode': '需进入 BOOT 模式（按住 PTT 开机）。',
-      'otherOperations': '备份校准、校验校准、恢复校准、写频、开机图片',
+      'otherOperations': '备份校准、校验校准、恢复校准、写频',
       'normalMode': '均在正常开机使用界面下连接 USB 操作。',
       'footerDev': '固件 & 工具由 BD1AHN 开发',
       'footerUVTools': 'UVTools2',
@@ -571,7 +571,7 @@
       'downloadCalib': 'Download calibration.dat',
       
       // Restore calibration tab
-      'restoreWarning': '⚠️ Same as restore, enter normal usage interface first before connecting USB; device auto-reboots after write. Syrup always writes calib to 0xB000; use a backup from this site or a compatible 512-byte file.',
+      'restoreWarning': '⚠️ Same as restore, enter normal usage interface first before connecting USB; device auto-reboots after write. This site always reads/writes v5 calib at 0xB000; use a backup from this site or a compatible 512-byte file.',
       'selectCalibFile': 'Select calibration backup file (.dat)',
       'restoreCalib': 'Restore Calibration',
       
@@ -634,7 +634,7 @@
       'freqRead': 'Read',
       'freqWrite': 'Write',
       'freqClear': 'Clear',
-      'writefreqNote': 'Tip: Syrup only. Channel name: English/Chinese UTF-8 (max 15 bytes, ~5 Chinese chars); includes WFM.',
+      'writefreqNote': 'Tip: Syrup only. Channel name: English/Chinese UTF-8 (max 15 bytes, ~5 Chinese chars).',
       'clickSupplement': 'Click to submit',
       'readFromDevice': 'Read from Device',
       'writeToDevice': 'Write to Device',
@@ -652,7 +652,7 @@
       'freqCTCSS': 'CTCSS',
       'freqOffsetDir': 'Offset Dir',
       'freqOffsetDirSub': 'MENU Offset Dir',
-      'freqModeSub': 'FM/AM/USB/WFM',
+      'freqModeSub': 'FM/AM/USB',
       'freqStep': 'Step',
       'freqkHz': 'kHz',
       'freqList': 'Channel List',
@@ -867,7 +867,7 @@
       'browserNote': 'Requires Chrome / Edge / Opera browser.',
       'flashFirmwareBoot': 'Only firmware flash',
       'enterBootMode': 'requires entering BOOT mode (hold PTT while powering on).',
-      'otherOperations': 'Calib backup/check/restore, writefreq, boot logo',
+      'otherOperations': 'Calib backup/check/restore, writefreq',
       'normalMode': 'all operate in normal usage interface with USB connection.',
       'footerDev': 'Firmware & Tools developed by BD1AHN',
       'footerUVTools': 'UVTools2',

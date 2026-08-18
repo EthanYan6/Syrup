@@ -210,8 +210,8 @@ const CONFIG_FLASH_SIZE   = 0x0200;
 const CONFIG_CHUNK        = 32;
 
 /**
- * 校准区 EEPROM 基址：固定使用 v5+ / 第三方协议地址 0xB000（不再按固件版本切换）。
- * 对应 App/driver/eeprom_compat.c：物理 Flash 0x010000 ↔ 协议地址 0xB000（512 字节）。
+ * 校准区 EEPROM 基址：本站读写固定为 v5 地址 0xB000。
+ * 物理 Flash 0x010000 ↔ 协议地址 0xB000（512 字节）；不映射 0x1E00，以免占信道。
  */
 const CALIB_V5_BASE          = 0xB000;
 const CALIB_OFFICIAL_BASE    = 0x1E00;        // 仅校准检查对照列使用
@@ -788,7 +788,7 @@ async function handshake(blVersion) {
 }
 
 /**
- * 解析并记录设备信息；校准区基址固定为 v5 地址 0xB000（不按版本切换）。
+ * 记录设备信息字符串；本站校准读写固定 0xB000，不按版本切换。
  */
 function applyCalibBaseFromDeviceInfo(deviceInfoPayload) {
   calibEepromBase = CALIB_V5_BASE;
@@ -805,9 +805,7 @@ function applyCalibBaseFromDeviceInfo(deviceInfoPayload) {
   }
   if (asciiLine.length > 0) {
     log(window.t ? window.t('logDeviceInfo') + asciiLine : '设备信息: ' + asciiLine, 'success');
-    const versionMatch = asciiLine.match(/v(\d+)\.(\d+)\.(\d+)/);
-    const verStr = versionMatch ? versionMatch[0].slice(1) : '?';
-    log(window.t ? window.t('logFirmwareCalibBase', {ver: verStr, addr: 'B000'}) : '校准区基址固定 0xB000（v5+）' + (verStr !== '?' ? '，设备 v' + verStr : ''), 'info');
+    log(window.t ? window.t('logFirmwareCalibBase', {ver: asciiLine, addr: 'B000'}) : '校准区基址固定 0xB000', 'info');
     return;
   }
   let hexLine = '';
@@ -817,7 +815,6 @@ function applyCalibBaseFromDeviceInfo(deviceInfoPayload) {
     hexLine += deviceInfoPayload[hi].toString(16).padStart(2, '0').toUpperCase() + ' ';
   }
   log(window.t ? window.t('logDeviceInfoHex') + hexLine : '设备信息(hex): ' + hexLine, 'info');
-  log(window.t ? window.t('logFirmwareCalibBase', {ver: '?', addr: 'B000'}) : '校准区基址固定 0xB000（v5+）', 'info');
 }
 
 /** 导出/恢复校准用：发 DEV_INFO_REQ，等设备应答（运行中的固件协议），不使用 Bootloader 的 NOTIFY 检测 */
@@ -877,7 +874,7 @@ async function requestDeviceInfoForCalib(purpose) {
   const rawRx = serialRxTotalBytes;
   if (sawBootloaderNotify) {
     throw new Error(
-      '超时：当前像是 Bootloader 刷机界面（收到 0x0518）。请正常开机进入信道/菜单界面后再做校准/字库/写频/开机图；仅「刷固件」才需要按住 PTT 进 BOOT。'
+      '超时：当前像是 Bootloader 刷机界面（收到 0x0518）。请正常开机进入信道/菜单界面后再做校准/字库/写频；仅「刷固件」才需要按住 PTT 进 BOOT。'
     );
   }
   if (!sawAnyMessage) {
@@ -1424,7 +1421,7 @@ on('restoreBtn', 'click', async () => {
     const calibSession = await requestDeviceInfoForCalib();
     log(window.t ? window.t('logRestoreCalibration') : '恢复校准数据...', 'info');
     const ts = calibSession.timestamp;
-    let offset = CALIB_V5_BASE;
+    let offset = calibEepromBase;
     for (let i = 0; i < CALIB_SIZE; i += CALIB_CHUNK) {
       updateProgress((i / CALIB_SIZE) * 100);
       const msg = createMessage(MSG_WRITE_EEPROM, 24);
@@ -2250,7 +2247,7 @@ const WF_DCS_OPTIONS = [
 ];
 
 const WF_POWER_LABELS = ['', 'LOW 1', 'LOW 2', 'LOW 3', 'LOW 4', 'LOW 5', 'MID', 'HIGH'];
-const WF_MOD_LABELS = ['FM', 'AM', 'USB', 'WFM'];
+const WF_MOD_LABELS = ['FM', 'AM', 'USB'];
 
 const WF_STEP_OPTIONS = [
   { value: 0, label: '2.5k', hz10: 250 },
@@ -3671,7 +3668,7 @@ async function writefreqWriteToDevice() {
     }
     const modCheck = Number.parseInt(fields.modVal, 10);
     if (!Number.isFinite(modCheck) || modCheck < 0 || modCheck >= WF_MOD_LABELS.length) {
-      messages.push(rowPrefix + '调制模式须为 FM / AM / USB / WFM');
+      messages.push(rowPrefix + '调制模式须为 FM / AM / USB');
     }
     try {
       wfParseToneSide(fields.rxCtcss, fields.rxDcs, rowPrefix + '接收侧');
