@@ -360,7 +360,7 @@ static void draw_channel_row(uint8_t vfo)
 	const bool show_dtmf =
 		gSetting_live_DTMF_decoder &&
 		gDTMF_RX_live[0] != 0 &&
-		vfo == gEeprom.TX_VFO;
+		vfo == gDTMF_RX_live_vfo;
 
 	char String[22];
 	char rx_tone[12];

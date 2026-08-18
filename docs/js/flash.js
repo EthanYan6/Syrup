@@ -263,6 +263,24 @@ function getDocumentDirectoryBaseUrlString() {
   return directoryBase;
 }
 
+/**
+ * 当前页加载的 flash.js 绝对 URL，用来把 ../firmware、../font 解析到与脚本同级的站点目录。
+ * @returns {string}
+ */
+function getFlashJsAbsoluteUrl() {
+  const scriptElements = document.getElementsByTagName('script');
+  for (let scriptIndex = 0; scriptIndex < scriptElements.length; scriptIndex++) {
+    const srcAttr = scriptElements[scriptIndex].src;
+    if (!srcAttr) {
+      continue;
+    }
+    if (srcAttr.indexOf('flash.js') >= 0) {
+      return srcAttr;
+    }
+  }
+  return '';
+}
+
 const THEME_STORAGE_KEY = 'syrup-web-theme';
 
 function applyThemeToDocument(themeName) {
@@ -1106,11 +1124,9 @@ function cnFontCollectCnBinCandidateUrls() {
   const flashJsUrl = getFlashJsAbsoluteUrl();
   if (flashJsUrl) {
     pushUnique(new URL('../font/' + CN_FONT_BIN_NAME, flashJsUrl).href);
-    pushUnique(new URL('../fonts/' + CN_FONT_BIN_NAME, flashJsUrl).href);
   }
   const docDirectoryBase = getDocumentDirectoryBaseUrlString();
   pushUnique(new URL('font/' + CN_FONT_BIN_NAME, docDirectoryBase).href);
-  pushUnique(new URL('fonts/' + CN_FONT_BIN_NAME, docDirectoryBase).href);
   return orderedUrls;
 }
 
@@ -1121,7 +1137,7 @@ function cnFontFetchArrayBuffer() {
   function attemptNextUrl() {
     if (attemptIndex >= totalCandidates) {
       return Promise.reject(new Error(
-        '无法加载字库：已尝试 font/cn_font.bin、fonts/cn_font.bin（共 ' + totalCandidates + ' 个地址）'
+        '无法加载字库：已尝试 font/cn_font.bin（共 ' + totalCandidates + ' 个地址）'
       ));
     }
     const fullUrl = candidateUrls[attemptIndex++];

@@ -930,6 +930,9 @@ static void CheckRadioInterrupts(void)
                         gDTMF_RX_live[len++]  = c;
                         gDTMF_RX_live[len]    = 0;
                         gDTMF_RX_live_timeout = DTMF_RX_live_timeout_500ms;  // time till we delete it
+                        gDTMF_RX_live_vfo     = gEeprom.RX_VFO;
+                        if (gDTMF_RX_live_vfo > 1u)
+                            gDTMF_RX_live_vfo = 0u;
                         gUpdateDisplay        = true;
                     }
 
