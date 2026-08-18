@@ -17,18 +17,16 @@
 #include <string.h>
 #include <stdint.h>
 
+#ifdef ENABLE_FEAT_F4HWN_LOGO
 #include "driver/py25q16.h"
+#endif
 #include "driver/st7565.h"
-#include "external/printf/printf.h"
-#include "font.h"
-#include "helper/battery.h"
-#include "settings.h"
 #include "misc.h"
 #include "ui/helper.h"
 #include "ui/welcome.h"
 #include "ui/status.h"
 #include "version.h"
-#include "bitmaps.h"
+#include "bitmap_syrup.h"
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
     #include "k5viewer.h"
@@ -240,134 +238,27 @@ void UI_DisplayWelcome(void)
 #endif
     UI_DisplayClear();
 
-#ifdef ENABLE_FEAT_F4HWN
-    ST7565_BlitStatusLine();
-    ST7565_BlitFullScreen();
+    const uint8_t ox = (uint8_t)((128u - BITMAP_SYRUP_WIDTH) / 2u);
+    const uint8_t oy = (uint8_t)((48u - BITMAP_SYRUP_HEIGHT) / 2u);
 
-    if (gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_NONE || gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_SOUND) {
-        ST7565_FillScreen(0x00);
-        return;
-    }
-#else
-    if (gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_NONE || gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_FULL_SCREEN) {
-        ST7565_FillScreen(0xFF);
-        return;
-    }
-#endif
-#ifdef ENABLE_FEAT_F4HWN_LOGO
-    else if (gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_LOGO) {
-        UI_LoadLogo();
-    }
-#endif
-    else {
-        char WelcomeString0[16];
-        char WelcomeString1[16];
-        char WelcomeString2[16];
-        char WelcomeString3[32];
+    for (uint8_t page = 0; page < BITMAP_SYRUP_PAGES; page++) {
+        const uint8_t *src = &BITMAP_Syrup[(uint16_t)page * BITMAP_SYRUP_WIDTH];
+        const uint8_t y0 = (uint8_t)(oy + page * 8u);
 
-        // 0x0EB0
-        PY25Q16_ReadBuffer(0x00A0C8, WelcomeString0, 16);
-        // 0x0EC0
-        PY25Q16_ReadBuffer(0x00A0D8, WelcomeString1, 16);
-
-        sprintf(WelcomeString2, "%u.%02uV %u%%",
-                gBatteryVoltageAverage / 100,
-                gBatteryVoltageAverage % 100,
-                BATTERY_VoltsToPercent(gBatteryVoltageAverage));
-
-        if (gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_VOLTAGE)
-        {
-            strcpy(WelcomeString0, "VOLTAGE");
-            strcpy(WelcomeString1, WelcomeString2);
+        if (y0 < 8u) {
+            memcpy(gStatusLine + ox, src, BITMAP_SYRUP_WIDTH);
+        } else {
+            const uint8_t fb_line = (uint8_t)((y0 - 8u) / 8u);
+            memcpy(gFrameBuffer[fb_line] + ox, src, BITMAP_SYRUP_WIDTH);
         }
-        else if(gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_ALL)
-        {
-            if(strlen(WelcomeString0) == 0 && strlen(WelcomeString1) == 0)
-            {
-                strcpy(WelcomeString0, "WELCOME");
-                strcpy(WelcomeString1, WelcomeString2);
-            }
-            else if(strlen(WelcomeString0) == 0 || strlen(WelcomeString1) == 0)
-            {
-                if(strlen(WelcomeString0) == 0)
-                {
-                    strcpy(WelcomeString0, WelcomeString1);
-                }
-                strcpy(WelcomeString1, WelcomeString2);
-            }
-        }
-        else if(gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_MESSAGE)
-        {
-            if(strlen(WelcomeString0) == 0)
-            {
-                strcpy(WelcomeString0, "WELCOME");
-            }
-
-            if(strlen(WelcomeString1) == 0)
-            {
-                strcpy(WelcomeString1, "BIENVENUE");
-            }
-        }
-
-        UI_PrintString(WelcomeString0, 0, 127, 0, 10);
-        UI_PrintString(WelcomeString1, 0, 127, 2, 10);
+    }
 
 #ifdef ENABLE_FEAT_F4HWN
-        const size_t version_width = strlen(DisplayVersion) * (ARRAY_SIZE(gFontSmall[0]) + 1u);
-        const uint8_t version_x = version_width < LCD_WIDTH
-            ? (uint8_t)((LCD_WIDTH - version_width + 1u) / 2u)
-            : 0u;
-        const uint8_t capsule_left = version_x > 2u ? (uint8_t)(version_x - 3u) : 0u;
-        const size_t capsule_right_candidate = version_x + version_width + 2u;
-        const uint8_t capsule_right = capsule_right_candidate < LCD_WIDTH
-            ? (uint8_t)capsule_right_candidate
-            : (LCD_WIDTH - 1u);
-
-        UI_PrintStringSmallNormal(DisplayVersion, version_x, 0, 4);
-
-        if (capsule_left > 0u)
-        {
-            UI_DrawLineBuffer(gFrameBuffer, 0, 35, capsule_left - 1u, 35, 1);
-        }
-        gFrameBuffer[4][capsule_left] ^= 0x7F;
-        for (uint8_t x = capsule_left + 1u; x < capsule_right; x++)
-        {
-            gFrameBuffer[4][x] ^= 0xFF;
-            gFrameBuffer[3][x] ^= 0x80;
-        }
-        gFrameBuffer[4][capsule_right] ^= 0x7F;
-        if (capsule_right < LCD_WIDTH - 1u)
-        {
-            UI_DrawLineBuffer(gFrameBuffer, capsule_right + 1u, 35, LCD_WIDTH - 1u, 35, 1);
-        }
-
-        /*
-        #ifdef ENABLE_FEAT_F4HWN_MEM
-            uint32_t ram_used   = 0;
-            uint32_t flash_used = 0;
-            build_usage(&ram_used, &flash_used);
-
-            const uint16_t ram_pct   = pct_x100(ram_used,   RAM_SIZE_BYTES);
-            const uint16_t flash_pct = pct_x100(flash_used, FLASH_SIZE_BYTES);
-
-            // No floats: 7559 => 75.59%
-            sprintf(WelcomeString3,
-            "FLASH %u.%02u %% - SRAM  %u.%02u %%",
-            (unsigned)(flash_pct / 100), (unsigned)(flash_pct % 100),
-            (unsigned)(ram_pct / 100),   (unsigned)(ram_pct % 100));
-
-            GUI_DisplaySmallest(WelcomeString3, 5, 1, true, true);
-            ST7565_BlitStatusLine();
-        #endif
-        */
-
-        sprintf(WelcomeString3, "%s Edition", Edition);
-        UI_PrintStringSmallNormal(WelcomeString3, 0, 127, 6);
-
+    UI_PrintStringSmallNormal(DisplayVersion, 0, 127, 5);
 #else
-        UI_PrintStringSmallNormal(Version, 0, 127, 6);
+    UI_PrintStringSmallNormal(Version, 0, 127, 5);
 #endif
-    }
+    UI_PrintStringSmallNormal("BD1AHN", 0, 127, 6);
 
     ST7565_BlitStatusLine();
     ST7565_BlitFullScreen();

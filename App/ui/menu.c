@@ -106,7 +106,7 @@ const t_menu_item MenuList[] =
     {"MicBar",      MENU_MIC_BAR       },
 #endif
     // {"ChDisp",      MENU_MDF           }, // was "MDF" — hidden
-    {"POnMsg",      MENU_PONMSG        },
+    // {"POnMsg",      MENU_PONMSG        }, // hidden: boot screen is fixed
     {"BLTime",      MENU_ABR           }, // was "ABR"
     {"BLMin",       MENU_ABR_MIN       },
     {"BLMax",       MENU_ABR_MAX       },
@@ -645,7 +645,7 @@ static const uint8_t CatPower[]   = {
     MENU_SET_SAV,
 #endif
 };
-static const uint8_t CatDisplay[] = { MENU_LANGUAGE, MENU_PONMSG, MENU_ABR, MENU_ABR_MIN, MENU_ABR_MAX, MENU_ABR_ON_TX_RX, MENU_SET_CTR, MENU_SET_INV, MENU_VOL };
+static const uint8_t CatDisplay[] = { MENU_LANGUAGE, MENU_ABR, MENU_ABR_MIN, MENU_ABR_MAX, MENU_ABR_ON_TX_RX, MENU_SET_CTR, MENU_SET_INV, MENU_VOL };
 static const uint8_t CatTimers[]  = { MENU_TOT, MENU_SET_TOT, MENU_SET_EOT, MENU_SET_TMR };
 static const uint8_t CatAudio[]   = {
     MENU_MIC,

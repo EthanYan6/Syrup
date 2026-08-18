@@ -120,16 +120,8 @@ void BACKLIGHT_InitHardware()
 
 static void BACKLIGHT_Sound(void)
 {
-    if (gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_SOUND ||
-        gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_ALL
-#ifdef ENABLE_FEAT_F4HWN_LOGO
-        || gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_LOGO
-#endif
-    )
-    {
-        AUDIO_PlayBeep(BEEP_880HZ_60MS_TRIPLE_BEEP);
-        AUDIO_PlayBeep(BEEP_880HZ_60MS_TRIPLE_BEEP);
-    }
+    AUDIO_PlayBeep(BEEP_880HZ_60MS_TRIPLE_BEEP);
+    AUDIO_PlayBeep(BEEP_880HZ_60MS_TRIPLE_BEEP);
 
     gK5startup = false;
 }
