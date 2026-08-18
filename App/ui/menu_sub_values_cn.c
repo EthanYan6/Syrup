@@ -291,7 +291,7 @@ const char *const gSubMenu_SIDEFUNCTIONS_CN[] = {
     "RF LOG",
 # endif
 # ifdef ENABLE_FEAT_F4HWN_FOXHUNT
-    "FOX HUNT\nBEACON",
+    "\xe7\x8c\x8e\xe7\x8b\x90\xe6\xa8\xa1\xe5\xbc\x8f",
 # endif
 #endif
 };

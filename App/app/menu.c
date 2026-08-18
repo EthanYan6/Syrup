@@ -21,6 +21,9 @@
     #include "py32f0xx.h"
 #endif
 #include "app/dtmf.h"
+#ifdef ENABLE_FEAT_F4HWN
+    #include "app/action.h"
+#endif
 #include "app/generic.h"
 #include "app/menu.h"
 #include "app/scanner.h"
@@ -1285,13 +1288,32 @@ void MENU_AcceptSetting(void)
         case MENU_F2LONG:
         case MENU_MLONG:
             {
-                uint8_t * fun[]= {
+                const int menuId = UI_MENU_GetCurrentMenuId();
+                const uint8_t selected = gSubMenu_SIDEFUNCTIONS[gSubMenuSelection].id;
+                uint8_t *fun[] = {
                     &gEeprom.KEY_1_SHORT_PRESS_ACTION,
                     &gEeprom.KEY_1_LONG_PRESS_ACTION,
                     &gEeprom.KEY_2_SHORT_PRESS_ACTION,
                     &gEeprom.KEY_2_LONG_PRESS_ACTION,
                     &gEeprom.KEY_M_LONG_PRESS_ACTION};
-                *fun[UI_MENU_GetCurrentMenuId()-MENU_F1SHRT] = gSubMenu_SIDEFUNCTIONS[gSubMenuSelection].id;
+
+                if (menuId == MENU_F1SHRT || menuId == MENU_F1LONG) {
+                    const bool wasDualPtt = ACTION_DualPttEnabled();
+
+                    if (selected == ACTION_OPT_PTT) {
+                        gEeprom.KEY_1_SHORT_PRESS_ACTION = ACTION_OPT_PTT;
+                        gEeprom.KEY_1_LONG_PRESS_ACTION  = ACTION_OPT_PTT;
+                        gSetting_set_ptt = 0;
+                        gSetting_set_ptt_session = 0;
+                    } else if (wasDualPtt) {
+                        gEeprom.KEY_1_SHORT_PRESS_ACTION = ACTION_OPT_NONE;
+                        gEeprom.KEY_1_LONG_PRESS_ACTION  = ACTION_OPT_NONE;
+                    } else {
+                        *fun[menuId - MENU_F1SHRT] = selected;
+                    }
+                } else {
+                    *fun[menuId - MENU_F1SHRT] = selected;
+                }
             }
             break;
 
@@ -1387,6 +1409,37 @@ static void MENU_ClampSelection(int8_t Direction)
 {
     int32_t Min;
     int32_t Max;
+
+#ifdef ENABLE_FEAT_F4HWN
+    const int sideMenuId = UI_MENU_GetCurrentMenuId();
+    if (sideMenuId >= MENU_F1SHRT && sideMenuId <= MENU_MLONG) {
+        const int max = (int)gSubMenu_SIDEFUNCTIONS_size - 1;
+        int selection = (int)gSubMenuSelection;
+
+        if (selection < 0 || selection > max ||
+            (gSubMenu_SIDEFUNCTIONS[selection].id == ACTION_OPT_PTT &&
+             sideMenuId != MENU_F1SHRT && sideMenuId != MENU_F1LONG))
+        {
+            selection = 0;
+            while (selection <= max &&
+                   (gSubMenu_SIDEFUNCTIONS[selection].id == ACTION_OPT_PTT &&
+                    sideMenuId != MENU_F1SHRT && sideMenuId != MENU_F1LONG))
+                selection++;
+            if (selection > max)
+                selection = 0;
+        }
+
+        int next = selection;
+        do {
+            next = (int)NUMBER_AddWithWraparound(next, Direction, 0, max);
+        } while ((gSubMenu_SIDEFUNCTIONS[next].id == ACTION_OPT_PTT &&
+                  sideMenuId != MENU_F1SHRT && sideMenuId != MENU_F1LONG) &&
+                 next != selection);
+
+        gSubMenuSelection = next;
+        return;
+    }
+#endif
 
     if (!MENU_GetLimits(UI_MENU_GetCurrentMenuId(), &Min, &Max))
     {

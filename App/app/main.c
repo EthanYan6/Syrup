@@ -32,7 +32,7 @@
 #endif
 
 #ifdef ENABLE_FEAT_F4HWN_GAME
-#include "app/breakout.h"
+#include "app/cw.h"
 #endif
 
 #include "audio.h"
@@ -271,7 +271,7 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
         case KEY_7:
 #ifdef ENABLE_FEAT_F4HWN_GAME
             if (!beep) {
-                APP_RunBreakout();
+                APP_RunCW();
             } else {
 #endif
 #ifdef ENABLE_VOX

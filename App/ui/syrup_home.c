@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "app/action.h"
 #include "app/dtmf.h"
 #ifdef ENABLE_AM_FIX
 #include "am_fix.h"
@@ -1089,6 +1090,9 @@ void UI_SyrupHome_Tick10ms(void)
 	const bool rx = FUNCTION_IsRx();
 
 	if (tx && !GPIO_IsPttPressed()
+#ifdef ENABLE_FEAT_F4HWN
+	    && !ACTION_SidePttActive()
+#endif
 #ifdef ENABLE_VOX
 	    && !gEeprom.VOX_SWITCH
 #endif

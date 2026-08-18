@@ -18,7 +18,7 @@
 #include <stdlib.h>  // abs()
 
 #include "app/app.h"
-#ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
+#ifdef ENABLE_FEAT_F4HWN
     #include "app/action.h"
 #endif
 #include "app/dtmf.h"
@@ -297,6 +297,7 @@ void UI_DisplayAudioScope(void)
 #endif
 #ifdef ENABLE_FEAT_F4HWN
     && !gSetting_set_ptt_session
+    && !ACTION_SidePttActive()
 #endif
     )
     return;

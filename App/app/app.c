@@ -1108,7 +1108,11 @@ static void HandleVox(void)
         else if (gVoxStopCountdown_10ms == 0)
             gVOX_NoiseDetected = false;
 
-        if (gCurrentFunction == FUNCTION_TRANSMIT && !gPttIsPressed && !gVOX_NoiseDetected) {
+        if (gCurrentFunction == FUNCTION_TRANSMIT && !gPttIsPressed && !gVOX_NoiseDetected
+#ifdef ENABLE_FEAT_F4HWN
+            && !ACTION_SidePttActive()
+#endif
+        ) {
             APP_HandleEndTransmission();
 
             gUpdateStatus        = true;
@@ -1289,6 +1293,7 @@ void APP_Update(void)
         && gScheduleDualWatch
         && gScanStateDir == SCAN_OFF
         && !gPttIsPressed
+        && gCurrentFunction != FUNCTION_TRANSMIT
         && gCurrentFunction != FUNCTION_POWER_SAVE
 #ifdef ENABLE_FEAT_F4HWN_BEAM
         && !gBeamActive
@@ -1475,6 +1480,10 @@ void CheckKeys(void)
                 if (gPttOnePushCounter == 0)
                 {   // start transmitting
                     boot_counter_10ms   = 0;
+#ifdef ENABLE_FEAT_F4HWN
+                    if (ACTION_DualPttEnabled())
+                        ACTION_DualPttOnHardwarePress();
+#endif
                     gPttIsPressed       = true;
                     gPttOnePushCounter = 1;
                     ProcessKey(KEY_PTT, true, false);
@@ -1483,6 +1492,9 @@ void CheckKeys(void)
                 {   // stop transmitting
                     StopTransmitting();
                     gPttOnePushCounter = 0;
+#ifdef ENABLE_FEAT_F4HWN
+                    ACTION_DualPttOnHardwareRelease();
+#endif
                 } 
                 else
                     gPttOnePushCounter++;
@@ -1504,6 +1516,9 @@ void CheckKeys(void)
                 {   // stop transmitting
                     gPttDebounceCounter = 0;
                     StopTransmitting();
+#ifdef ENABLE_FEAT_F4HWN
+                    ACTION_DualPttOnHardwareRelease();
+#endif
                 }
             } 
             else 
@@ -1515,6 +1530,10 @@ void CheckKeys(void)
             {   // start transmitting
                 boot_counter_10ms   = 0;
                 gPttDebounceCounter = 0;
+#ifdef ENABLE_FEAT_F4HWN
+                if (ACTION_DualPttEnabled())
+                    ACTION_DualPttOnHardwarePress();
+#endif
                 gPttIsPressed       = true;
                 ProcessKey(KEY_PTT, true, false);
             }
@@ -1650,7 +1669,9 @@ void APP_TimeSlice10ms(void)
     }
 
 #ifdef ENABLE_FEAT_F4HWN_LOGO_SAV
+#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
     bool screenSaverRendered = false;
+#endif
 
     if (gScreenSaverDisplayed) {
         if (gUpdateDisplayCurrent) {
@@ -1664,13 +1685,17 @@ void APP_TimeSlice10ms(void)
             if (++gScreenSaverTick >= 8u) {
                 gScreenSaverTick = 0;
                 ScreenSaverRenderMatrix(false);
+#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
                 screenSaverRendered = true;
+#endif
             }
         } else if (gSetting_set_sav == SET_SAV_LOGO_PLUS) {
             if (++gScreenSaverTick >= 16u) {
                 gScreenSaverTick = 0;
                 ScreenSaverRenderLogoPlus(false);
+#ifdef ENABLE_FEAT_F4HWN_K5VIEWER
                 screenSaverRendered = true;
+#endif
             }
         }
     }
@@ -2352,7 +2377,11 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     bool lck_condition = (gEeprom.KEY_LOCK || lowBatPopup) && gCurrentFunction != FUNCTION_TRANSMIT;
 
     if((gSetting_set_lck & SET_LCK_PTT) == 0)
-        lck_condition = lck_condition && Key != KEY_PTT;
+        lck_condition = lck_condition && Key != KEY_PTT
+#ifdef ENABLE_FEAT_F4HWN
+                        && !(Key == KEY_SIDE1 && ACTION_DualPttEnabled())
+#endif
+        ;
 
     if (lck_condition)
 #else
@@ -2401,6 +2430,15 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             return;
         }
     }
+
+#ifdef ENABLE_FEAT_F4HWN
+    if (Key == KEY_SIDE1 && ACTION_DualPttEnabled() &&
+        !(gScreenToDisplay == DISPLAY_MAIN && gDTMF_InputMode))
+    {
+        ACTION_HandleSide1Ptt(bKeyPressed, bKeyHeld);
+        goto Skip;
+    }
+#endif
 
     if (Key <= KEY_9 || Key == KEY_F) {
         //if (gScanStateDir != SCAN_OFF || gCssBackgroundScan) { // FREQ/CTCSS/DCS scanning

@@ -185,7 +185,7 @@ enable_feature(ENABLE_EXTRA_UART_CMD)
 
 enable_feature(ENABLE_FEAT_F4HWN)
 enable_feature(ENABLE_FEAT_F4HWN_GAME 
-    app/breakout.c
+    app/cw.c
 )
 enable_feature(ENABLE_FEAT_F4HWN_K5VIEWER 
     k5viewer.c

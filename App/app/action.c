@@ -21,6 +21,7 @@
 #include "app/app.h"
 #include "app/chFrScanner.h"
 #include "app/common.h"
+#include "app/generic.h"
 #include "app/dtmf.h"
 #ifdef ENABLE_FLASHLIGHT
     #include "app/flashlight.h"
@@ -35,9 +36,11 @@
 #endif
 #include "driver/bk4819.h"
 #include "driver/gpio.h"
+#include "driver/keyboard.h"
 #include "driver/backlight.h"
 #include "functions.h"
 #include "misc.h"
+#include "radio.h"
 #include "settings.h"
 #include "ui/inputbox.h"
 #include "ui/main.h"
@@ -416,9 +419,155 @@ bool ACTION_PickerProcessKey(KEY_Code_t key, bool isPressed, bool isHeld)
 }
 #endif
 
+#ifdef ENABLE_FEAT_F4HWN
+static bool gSidePttIsPressed;
+
+bool ACTION_DualPttEnabled(void)
+{
+    return gEeprom.KEY_1_SHORT_PRESS_ACTION == ACTION_OPT_PTT ||
+           gEeprom.KEY_1_LONG_PRESS_ACTION  == ACTION_OPT_PTT;
+}
+
+bool ACTION_SidePttActive(void)
+{
+    return gSidePttIsPressed;
+}
+
+void ACTION_SyncDualPttKeyActions(void)
+{
+    if (gEeprom.KEY_2_SHORT_PRESS_ACTION == ACTION_OPT_PTT)
+        gEeprom.KEY_2_SHORT_PRESS_ACTION = ACTION_OPT_NONE;
+    if (gEeprom.KEY_2_LONG_PRESS_ACTION == ACTION_OPT_PTT)
+        gEeprom.KEY_2_LONG_PRESS_ACTION = ACTION_OPT_NONE;
+    if (gEeprom.KEY_M_LONG_PRESS_ACTION == ACTION_OPT_PTT)
+        gEeprom.KEY_M_LONG_PRESS_ACTION = ACTION_OPT_NONE;
+
+    if (ACTION_DualPttEnabled()) {
+        gEeprom.KEY_1_SHORT_PRESS_ACTION = ACTION_OPT_PTT;
+        gEeprom.KEY_1_LONG_PRESS_ACTION  = ACTION_OPT_PTT;
+        gSetting_set_ptt = 0;
+        gSetting_set_ptt_session = 0;
+    }
+}
+
+bool ACTION_Side1KeyHeld(void)
+{
+    return KEYBOARD_Poll() == KEY_SIDE1 || gKeyReading1 == KEY_SIDE1;
+}
+
+void ACTION_SetMainVfo(uint8_t vfo)
+{
+    if (vfo > 1u)
+        vfo = 1u;
+
+    if (gEeprom.TX_VFO == vfo)
+        return;
+
+#ifdef ENABLE_SCAN_RANGES
+    gScanRangeStart = 0;
+#endif
+
+    gEeprom.TX_VFO = vfo;
+
+    if (gInputBoxIndex > 0) {
+        gInputBoxIndex  = 0;
+        gHasVfoBackup   = false;
+    }
+
+    if (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF)
+        gEeprom.CROSS_BAND_RX_TX = gEeprom.TX_VFO + 1;
+    if (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF)
+        gEeprom.DUAL_WATCH = gEeprom.TX_VFO + 1;
+
+    RADIO_SelectVfos();
+
+    gRequestDisplayScreen = DISPLAY_MAIN;
+    gUpdateStatus         = true;
+    gUpdateDisplay        = true;
+}
+
+static void ACTION_StartDualPttTx(uint8_t vfo)
+{
+    ACTION_SetMainVfo(vfo);
+    GENERIC_Key_PTT(true);
+    if (gFlagPrepareTX) {
+        RADIO_PrepareTX();
+        gFlagPrepareTX = false;
+    }
+}
+
+static void ACTION_StopDualPttTx(void)
+{
+    gSidePttIsPressed = false;
+    if (gCurrentFunction == FUNCTION_TRANSMIT)
+        GENERIC_Key_PTT(false);
+    gRequestSaveSettings = true;
+}
+
+void ACTION_DualPttOnHardwarePress(void)
+{
+    if (!ACTION_DualPttEnabled())
+        return;
+
+    if (gCurrentFunction == FUNCTION_TRANSMIT && !gPttIsPressed) {
+        APP_HandleEndTransmission();
+        RADIO_SetVfoState(VFO_STATE_NORMAL);
+    }
+
+    ACTION_SetMainVfo(0);
+}
+
+void ACTION_DualPttOnHardwareRelease(void)
+{
+    if (!ACTION_DualPttEnabled() || !ACTION_Side1KeyHeld())
+        return;
+
+    ACTION_StartDualPttTx(1);
+    gSidePttIsPressed = true;
+}
+
+void ACTION_HandleSide1Ptt(bool bKeyPressed, bool bKeyHeld)
+{
+    if (SerialConfigInProgress())
+        return;
+
+    /* Long-press repeats must not re-enter TX or retune the VFO. */
+    if (bKeyHeld && bKeyPressed)
+        return;
+
+    if (bKeyPressed) {
+        if (GPIO_IsPttPressed())
+            return;
+
+        if (gSidePttIsPressed)
+            return;
+
+        gSidePttIsPressed = true;
+        ACTION_StartDualPttTx(1);
+        return;
+    }
+
+    gSidePttIsPressed = false;
+
+    if (GPIO_IsPttPressed())
+        return;
+
+    ACTION_StopDualPttTx();
+}
+#endif
+
 void ACTION_Handle(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     HideFKeyIcon();
+
+#ifdef ENABLE_FEAT_F4HWN
+    if (Key == KEY_SIDE1 && ACTION_DualPttEnabled() &&
+        !(gScreenToDisplay == DISPLAY_MAIN && gDTMF_InputMode))
+    {
+        ACTION_HandleSide1Ptt(bKeyPressed, bKeyHeld);
+        return;
+    }
+#endif
 
     if (gScreenToDisplay == DISPLAY_MAIN && gDTMF_InputMode){
          // entering DTMF code
@@ -687,6 +836,9 @@ void ACTION_RxA(void)
 
 void ACTION_Ptt(void)
 {
+    if (ACTION_DualPttEnabled())
+        return;
+
     gSetting_set_ptt_session = !gSetting_set_ptt_session;
 
     ACTION_Update();

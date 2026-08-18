@@ -68,7 +68,7 @@ Fusion is the reference edition of the project. It provides an all-in-one firmwa
 - [UV Studio](https://armel.github.io/uvstudio/) with integrated K5Viewer screen mirroring, screenshots and remote keyboard control,
 - advanced RX audio profiles and Audio Scope,
 - first-responder-oriented controls,
-- the Breakout game,
+- the CW Morse trainer (F+7),
 - automatic RX/TX activity logging with RF Log,
 - full Fox Hunt and Morse Beacon support.
 

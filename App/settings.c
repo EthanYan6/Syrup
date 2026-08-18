@@ -18,6 +18,9 @@
 #include <string.h>
 
 #include "app/dtmf.h"
+#ifdef ENABLE_FEAT_F4HWN
+    #include "app/action.h"
+#endif
 #ifdef ENABLE_FMRADIO
     #include "app/fm.h"
 #endif
@@ -266,6 +269,9 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     gEeprom.KEY_2_SHORT_PRESS_ACTION     = (Data[3] < ACTION_OPT_LEN) ? Data[3] : ACTION_OPT_SCAN;
     gEeprom.KEY_2_LONG_PRESS_ACTION      = (Data[4] < ACTION_OPT_LEN) ? Data[4] : ACTION_OPT_NONE;
     gEeprom.SCAN_RESUME_MODE             = (Data[5] < 105)            ? Data[5] : 14;
+#ifdef ENABLE_FEAT_F4HWN
+    ACTION_SyncDualPttKeyActions();
+#endif
     gEeprom.AUTO_KEYPAD_LOCK             = (Data[6] < 41)             ? Data[6] : 0;
 #ifdef ENABLE_FEAT_F4HWN
     gEeprom.POWER_ON_DISPLAY_MODE        = (Data[7] < 6)              ? Data[7] : POWER_ON_DISPLAY_MODE_VOLTAGE;
@@ -521,6 +527,10 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
 
         // And set special session settings for actions
         gSetting_set_ptt_session = gSetting_set_ptt;
+        if (ACTION_DualPttEnabled()) {
+            gSetting_set_ptt = 0;
+            gSetting_set_ptt_session = 0;
+        }
     #endif
 
 #ifdef ENABLE_CHINESE
