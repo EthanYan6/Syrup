@@ -392,10 +392,19 @@ void UI_DisplayFM(void)
 			}
 		}
 	} else if (gFM_AutoScan) {
-		sprintf(String, "A-SCAN(%u)", gFM_ChannelPosition);
+#ifdef ENABLE_CHINESE
+		if (cn)
+			sprintf(String, "扫描中(%u)", gFM_ChannelPosition);
+		else
+#endif
+			sprintf(String, "A-SCAN(%u)", gFM_ChannelPosition);
 		pPrintStr = String;
 	} else {
+#ifdef ENABLE_CHINESE
+		pPrintStr = cn ? "扫描中" : "M-SCAN";
+#else
 		pPrintStr = "M-SCAN";
+#endif
 	}
 
 #ifdef ENABLE_CHINESE

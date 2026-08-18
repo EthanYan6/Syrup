@@ -347,6 +347,13 @@ static void sort(int16_t *a, int16_t *b)
         {   // tell user how to unlock the keyboard
             
             //memcpy(gFrameBuffer[shift] + 2, gFontKeyLock, sizeof(gFontKeyLock));
+#ifdef ENABLE_CHINESE
+            if (gUiLanguage == UI_LANGUAGE_CN) {
+                const uint8_t y0 = (uint8_t)(shift * 8u);
+                UI_PrintStringSmallAtPixelKeyLockUnlockHint("长按#解锁", 0, LCD_WIDTH - 1u, y0, (uint8_t)(y0 + 11u));
+                return;
+            }
+#endif
             UI_PrintStringSmallBold("UNLOCK KEYBOARD", 12, 0, shift);
             //memcpy(gFrameBuffer[shift] + 120, gFontKeyLock, sizeof(gFontKeyLock));
 

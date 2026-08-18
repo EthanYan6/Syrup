@@ -30,9 +30,9 @@
 #define SH_WAVE_H          20u
 #define SH_CH_H            20u
 #define SH_CH_GAP          2u
-#define SH_CH0_Y           0u
-#define SH_CH1_Y           (SH_CH0_Y + SH_CH_H + SH_CH_GAP)     /* 22 */
-#define SH_WAVE_Y          (SH_CH1_Y + SH_CH_H + SH_CH_GAP)     /* 44 */
+#define SH_CH0_Y           1u  /* both channel rows dropped 1px */
+#define SH_CH1_Y           (SH_CH0_Y + SH_CH_H + SH_CH_GAP)     /* 23 */
+#define SH_WAVE_Y          44u /* keep bottom band; 1px gap after CH1 */
 #define SH_NAME_Y_OFF      0u
 #define SH_PARAM_Y_OFF     8u  /* mod/pwr/sql — 4px above former +12 */
 #define SH_TONE_Y_OFF      14u /* R:/T: subtones under params */
@@ -67,6 +67,7 @@
 #define SH_SPK_W             12u
 #define SH_SPK_H             8u
 #define SH_SPK_GAP           3u
+#define SH_SPK_Y_OFF         2u  /* speaker icon dropped vs name row */
 #define SH_NAME_MAX          10u
 #define SH_PH_BAT_H          8u   /* battery / lock / small-font text height */
 #define SH_PH_LINE_GAP       2u   /* gap between name row and battery row */
@@ -311,6 +312,7 @@ static void invert_channel_row(uint8_t vfo)
 	const uint8_t y0 = (vfo == 0u) ? SH_CH0_Y : SH_CH1_Y;
 	const uint8_t y1 = (uint8_t)(y0 + SH_CH_H - 1u);
 
+	/* Hairline above invert (CH1 uses the 1px left by dropping rows; not painted on invert top) */
 	if (y0 > 0u) {
 		const uint8_t y_bar = (uint8_t)(y0 - 1u);
 		for (uint8_t x = 0; x < LCD_WIDTH; x++)
@@ -1029,7 +1031,7 @@ static void draw_last_rx_placeholder(void)
 		x = 0u;
 	else
 		x = (uint8_t)((LCD_WIDTH - total_w) / 2u);
-	draw_spk_bitmap(x, name_y);
+	draw_spk_bitmap(x, (uint8_t)(name_y + SH_SPK_Y_OFF));
 	draw_small_text(name, (uint8_t)(x + SH_SPK_W + SH_SPK_GAP), name_y, true);
 
 	draw_battery_status_row(bat_y);
