@@ -489,7 +489,7 @@ a.subtitle-chip:focus-visible {
 .tabs {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: center;
   gap: 2px;
@@ -2974,5 +2974,185 @@ body.help-page {
   .help-article li {
     orphans: 3;
     widows: 3;
+  }
+}
+
+/* ========== Aircraft radar tab ========== */
+.radar-panel {
+  margin-bottom: 8px;
+}
+.radar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.radar-status {
+  flex: 1 1 200px;
+  font-size: 0.9em;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.radar-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.radar-meta {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+.radar-meta-sep {
+  margin: 0 6px;
+  opacity: 0.6;
+}
+.radar-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(200px, 280px);
+  gap: 16px;
+  align-items: stretch;
+}
+.radar-stage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: radial-gradient(circle at 50% 45%, #1a2e1c 0%, #0a120c 70%);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 300px;
+}
+#radarCanvas {
+  width: min(100%, 420px);
+  height: auto;
+  max-width: 420px;
+  display: block;
+  cursor: crosshair;
+  border-radius: 50%;
+}
+.radar-detail {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 14px 14px 10px;
+  min-height: 280px;
+}
+.radar-detail-title {
+  font-family: var(--font-display);
+  font-size: 1.05em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.radar-detail-empty {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.radar-detail-fields {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.radar-detail-fields > div {
+  display: grid;
+  grid-template-columns: 4.5em 1fr;
+  gap: 8px;
+  font-size: 0.86em;
+}
+.radar-detail-fields dt {
+  color: var(--text-muted);
+}
+.radar-detail-fields dd {
+  color: var(--text-bright);
+  font-weight: 600;
+  margin: 0;
+  word-break: break-all;
+}
+.radar-list-wrap {
+  margin-top: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  padding: 10px 10px 8px;
+}
+.radar-list {
+  list-style: none;
+  display: grid;
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(148px, 168px);
+  gap: 8px;
+  margin: 0;
+  padding: 0 2px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg-muted);
+}
+.radar-list::-webkit-scrollbar {
+  height: 8px;
+}
+.radar-list::-webkit-scrollbar-track {
+  background: var(--bg-muted);
+  border-radius: 999px;
+}
+.radar-list::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, var(--accent) 0%, var(--btn-primary) 100%);
+  border-radius: 999px;
+  border: 2px solid var(--bg-muted);
+}
+.radar-list::-webkit-scrollbar-thumb:hover {
+  background: var(--btn-primary-hover);
+}
+.radar-list-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.82em;
+  background: var(--bg-muted);
+  border: 1px solid transparent;
+  min-height: 56px;
+}
+.radar-list-item:hover,
+.radar-list-item.is-selected {
+  border-color: var(--border-strong);
+  background: var(--blush);
+}
+html.theme-dark .radar-list-item:hover,
+html.theme-dark .radar-list-item.is-selected {
+  background: var(--bg-input);
+}
+.radar-list-call {
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.radar-list-meta {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.radar-footnote {
+  margin-top: 12px;
+  font-size: 0.78em;
+  color: var(--text-subtle);
+}
+
+@media (max-width: 720px) {
+  .radar-layout {
+    grid-template-columns: 1fr;
+  }
+  .radar-detail {
+    min-height: 0;
   }
 }

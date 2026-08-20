@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260818bootlabel">
+  <link rel="stylesheet" href="css/style.css?v=20260820radar4">
   <script src="//cdn.busuanzi.cc/busuanzi/3.6.9/busuanzi.min.js" defer></script>
 </head>
 <body>
@@ -195,6 +195,7 @@
           <button class="tab" type="button" data-tab="restore" id="tabRestore" data-i18n="tabRestore">恢复校准</button>
           <button class="tab" type="button" data-tab="writefreq" id="tabWritefreq" data-i18n="tabWritefreq">写频</button>
           <button class="tab" type="button" data-tab="basicinfo" id="tabBasicinfo" data-i18n="tabBasicinfo">基础信息</button>
+          <button class="tab" type="button" data-tab="radar" id="tabRadar" data-i18n="tabRadar">飞机雷达探测</button>
         </div>
 
         <!-- DUMP -->
@@ -420,6 +421,48 @@
           </section>
         </div>
 
+        <!-- AIRCRAFT RADAR (OpenSky, web-only) -->
+        <div class="tab-content" id="radar-content">
+          <section class="section radar-panel">
+            <div class="radar-toolbar">
+              <div class="radar-status" id="radarStatus" aria-live="polite" data-i18n="radarStatusIdle">进入本页后将请求定位并扫描附近飞机</div>
+              <div class="radar-toolbar-actions">
+                <button type="button" class="btn-inline btn-secondary" id="radarRefreshBtn" data-i18n="radarRefresh">刷新</button>
+                <button type="button" class="btn-inline btn-secondary" id="radarPauseBtn" data-i18n="radarPause">暂停</button>
+              </div>
+            </div>
+            <div class="radar-meta" id="radarMeta">
+              <span id="radarCount" data-i18n="radarCountZero">飞机：0</span>
+              <span class="radar-meta-sep" aria-hidden="true">·</span>
+              <span id="radarUpdated" data-i18n="radarUpdatedNever">上次刷新：—</span>
+            </div>
+            <div class="radar-layout">
+              <div class="radar-stage">
+                <canvas id="radarCanvas" width="420" height="420" aria-label="Aircraft radar"></canvas>
+              </div>
+              <aside class="radar-detail" id="radarDetail">
+                <h3 class="radar-detail-title" data-i18n="radarDetailTitle">飞机信息</h3>
+                <p class="radar-detail-empty" id="radarDetailEmpty" data-i18n="radarDetailEmpty">点击雷达上的目标查看详情</p>
+                <dl class="radar-detail-fields" id="radarDetailFields" hidden>
+                  <div><dt data-i18n="radarCallsign">呼号</dt><dd id="radarFieldCallsign">—</dd></div>
+                  <div><dt data-i18n="radarFlight">航班</dt><dd id="radarFieldFlight">—</dd></div>
+                  <div><dt data-i18n="radarAirline">航司</dt><dd id="radarFieldAirline">—</dd></div>
+                  <div><dt data-i18n="radarIcao">ICAO</dt><dd id="radarFieldIcao">—</dd></div>
+                  <div><dt data-i18n="radarAltitude">高度</dt><dd id="radarFieldAlt">—</dd></div>
+                  <div><dt data-i18n="radarSpeed">地速</dt><dd id="radarFieldSpeed">—</dd></div>
+                  <div><dt data-i18n="radarTrack">航向</dt><dd id="radarFieldTrack">—</dd></div>
+                  <div><dt data-i18n="radarDistance">距离</dt><dd id="radarFieldDist">—</dd></div>
+                  <div><dt data-i18n="radarBearing">方位</dt><dd id="radarFieldBrg">—</dd></div>
+                </dl>
+              </aside>
+            </div>
+            <div class="radar-list-wrap">
+              <ul class="radar-list" id="radarList" aria-label="Aircraft list"></ul>
+            </div>
+            <p class="radar-footnote" data-i18n="radarFootnote">数据经本机代理拉取自 OpenSky / adsb.lol（ADS-B）。请用 python docs/serve.py 启动。</p>
+          </section>
+        </div>
+
         <div id="logAnchorDefault" class="log-anchor-default" aria-hidden="true"></div>
 
         <section class="log-container" id="logContainerSection">
@@ -510,9 +553,11 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/lang.js?v=20260818bootlabel"></script>
+  <script src="js/lang.js?v=20260820radar5"></script>
   <script src="js/gb2312_codec.js?v=20260722cnfix"></script>
   <script src="js/flash.js?v=20260818remotefetch"></script>
+  <script src="js/airline_icao.js?v=20260820radar5"></script>
+  <script src="js/radar.js?v=20260820radar5"></script>
   <script>
   (function() {
     var coffeeBtn = document.getElementById('coffeeBtn');
