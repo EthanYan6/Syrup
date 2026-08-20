@@ -557,6 +557,9 @@ const t_sidefunction gSubMenu_SIDEFUNCTIONS[] =
         {"FOX HUNT\nBEACON", ACTION_OPT_FOXHUNT},
     #endif
 #endif
+#ifdef ENABLE_AIRCRAFT_RADAR
+    {"AIRCRAFT\nRADAR", ACTION_OPT_AIRCRAFT},
+#endif
 };
 
 const uint8_t gSubMenu_SIDEFUNCTIONS_size = ARRAY_SIZE(gSubMenu_SIDEFUNCTIONS);

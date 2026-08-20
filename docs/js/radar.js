@@ -150,12 +150,13 @@
     };
   }
 
-  function selectAircraft(icao) {
+  function selectAircraft(icao, opts) {
     state.selectedIcao = icao || null;
     var empty = $('radarDetailEmpty');
     var fields = $('radarDetailFields');
     var ac = null;
     var i;
+    var pushToRadio = !(opts && opts.skipPush);
     for (i = 0; i < state.aircraft.length; i++) {
       if (state.aircraft[i].icao === icao) {
         ac = state.aircraft[i];
@@ -194,6 +195,58 @@
       if (el) el.textContent = map[id];
     });
     renderList();
+    if (pushToRadio) {
+      pushSelectedToRadio(ac, flight);
+    }
+    updateSerialButtons();
+  }
+
+  function updateSerialButtons() {
+    var api = window.SyrupSerial;
+    var connected = !!(api && api.isConnected && api.isConnected());
+    var connectBtn = $('radarConnectBtn');
+    var pushBtn = $('radarPushBtn');
+    if (connectBtn) {
+      connectBtn.textContent = connected
+        ? tr('radarDisconnect')
+        : tr('radarConnect');
+      connectBtn.setAttribute('data-i18n', connected ? 'radarDisconnect' : 'radarConnect');
+    }
+    if (pushBtn) {
+      pushBtn.disabled = !connected || !state.selectedIcao;
+    }
+  }
+
+  function pushSelectedToRadio(ac, flight) {
+    var api = window.SyrupSerial;
+    if (!api || typeof api.pushAircraft !== 'function') {
+      return;
+    }
+    if (!api.isConnected || !api.isConnected()) {
+      setStatus('radarStatusNeedSerial');
+      updateSerialButtons();
+      return;
+    }
+    var label = (flight && flight.flightId) || (ac && ac.callsign) || (ac && ac.icao) || '';
+    var altM = (ac && typeof ac.alt === 'number' && isFinite(ac.alt)) ? Math.round(ac.alt) : -2147483648;
+    var distM = (ac && typeof ac.distanceKm === 'number' && isFinite(ac.distanceKm))
+      ? Math.min(65534, Math.round(ac.distanceKm * 1000))
+      : 0xFFFF;
+    api.pushAircraft({
+      callsign: label,
+      altitudeM: altM,
+      distanceM: distM,
+      frequency: 0,
+      listen: true,
+      openPage: true
+    }).then(function () {
+      setStatus('radarStatusPushed', { call: String(label || '').trim() || '—' });
+      updateSerialButtons();
+    }).catch(function (err) {
+      console.warn('radar push', err);
+      setStatus('radarStatusPushFail');
+      updateSerialButtons();
+    });
   }
 
   function renderList() {
@@ -323,7 +376,7 @@
           String(d.getSeconds()).padStart(2, '0');
         updateMeta();
         if (state.selectedIcao) {
-          selectAircraft(state.selectedIcao);
+          selectAircraft(state.selectedIcao, { skipPush: true });
         } else {
           renderList();
         }
@@ -600,6 +653,8 @@
   function bindUi() {
     var refreshBtn = $('radarRefreshBtn');
     var pauseBtn = $('radarPauseBtn');
+    var connectBtn = $('radarConnectBtn');
+    var pushBtn = $('radarPushBtn');
     var canvas = $('radarCanvas');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', function () {
@@ -618,6 +673,43 @@
         setPaused(!state.paused);
       });
     }
+    if (connectBtn) {
+      connectBtn.addEventListener('click', function () {
+        var api = window.SyrupSerial;
+        if (!api) return;
+        if (api.isConnected && api.isConnected()) {
+          Promise.resolve(api.disconnect && api.disconnect()).finally(function () {
+            updateSerialButtons();
+            setStatus('radarStatusIdle');
+          });
+          return;
+        }
+        Promise.resolve(api.connect && api.connect())
+          .then(function () {
+            setStatus('radarStatusConnected');
+            updateSerialButtons();
+          })
+          .catch(function (err) {
+            console.warn('radar connect', err);
+            setStatus('radarStatusNeedSerial');
+            updateSerialButtons();
+          });
+      });
+    }
+    if (pushBtn) {
+      pushBtn.addEventListener('click', function () {
+        if (!state.selectedIcao) return;
+        var ac = null;
+        for (var i = 0; i < state.aircraft.length; i++) {
+          if (state.aircraft[i].icao === state.selectedIcao) {
+            ac = state.aircraft[i];
+            break;
+          }
+        }
+        if (!ac) return;
+        pushSelectedToRadio(ac, parseFlightInfo(ac.callsign));
+      });
+    }
     if (canvas) {
       canvas.addEventListener('click', hitTestCanvas);
     }
@@ -625,7 +717,10 @@
     document.querySelectorAll('.tab').forEach(function (tab) {
       tab.addEventListener('click', function () {
         // Run after flash.js tab handler updates .active
-        window.setTimeout(onTabMaybeChanged, 0);
+        window.setTimeout(function () {
+          onTabMaybeChanged();
+          updateSerialButtons();
+        }, 0);
       });
     });
 
@@ -642,15 +737,18 @@
         drawRadar(performance.now());
       }
     });
+
+    updateSerialButtons();
   }
 
   window.radarRefreshI18n = function () {
     updateMeta();
-    if (state.selectedIcao) selectAircraft(state.selectedIcao);
+    if (state.selectedIcao) selectAircraft(state.selectedIcao, { skipPush: true });
     var pauseBtn = $('radarPauseBtn');
     if (pauseBtn) {
       pauseBtn.textContent = state.paused ? tr('radarResume') : tr('radarPause');
     }
+    updateSerialButtons();
   };
 
   if (document.readyState === 'loading') {

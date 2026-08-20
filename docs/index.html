@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260820radar4">
+  <link rel="stylesheet" href="css/style.css?v=20260820radar7">
   <script src="//cdn.busuanzi.cc/busuanzi/3.6.9/busuanzi.min.js" defer></script>
 </head>
 <body>
@@ -427,10 +427,13 @@
             <div class="radar-toolbar">
               <div class="radar-status" id="radarStatus" aria-live="polite" data-i18n="radarStatusIdle">进入本页后将请求定位并扫描附近飞机</div>
               <div class="radar-toolbar-actions">
+                <button type="button" class="btn-inline btn-secondary" id="radarConnectBtn" data-i18n="radarConnect">连接手台</button>
+                <button type="button" class="btn-inline btn-secondary" id="radarPushBtn" data-i18n="radarPush" disabled>推送到手台</button>
                 <button type="button" class="btn-inline btn-secondary" id="radarRefreshBtn" data-i18n="radarRefresh">刷新</button>
                 <button type="button" class="btn-inline btn-secondary" id="radarPauseBtn" data-i18n="radarPause">暂停</button>
               </div>
             </div>
+            <p class="radar-howto" id="radarHowto" data-i18n="radarHowto">① 手台正常开机 → ② 点「连接手台」→ ③ 点选飞机（或点「推送到手台」）→ 机身打开飞机页并 AM 收听</p>
             <div class="radar-meta" id="radarMeta">
               <span id="radarCount" data-i18n="radarCountZero">飞机：0</span>
               <span class="radar-meta-sep" aria-hidden="true">·</span>
@@ -553,11 +556,11 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/lang.js?v=20260820radar5"></script>
+  <script src="js/lang.js?v=20260820radar7"></script>
   <script src="js/gb2312_codec.js?v=20260722cnfix"></script>
-  <script src="js/flash.js?v=20260818remotefetch"></script>
+  <script src="js/flash.js?v=20260820radar7"></script>
   <script src="js/airline_icao.js?v=20260820radar5"></script>
-  <script src="js/radar.js?v=20260820radar5"></script>
+  <script src="js/radar.js?v=20260820radar7"></script>
   <script>
   (function() {
     var coffeeBtn = document.getElementById('coffeeBtn');

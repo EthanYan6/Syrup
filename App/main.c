@@ -27,6 +27,9 @@
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
     #include "app/rxtx_log.h"
 #endif
+#ifdef ENABLE_AIRCRAFT_RADAR
+    #include "app/aircraft.h"
+#endif
 #include "misc.h"
 #include "radio.h"
 #include "settings.h"
@@ -104,6 +107,9 @@ void Main(void)
 
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
     RXTX_LOG_Init();
+#endif
+#ifdef ENABLE_AIRCRAFT_RADAR
+    AIRCRAFT_Load();
 #endif
 
     #ifdef ENABLE_FEAT_F4HWN

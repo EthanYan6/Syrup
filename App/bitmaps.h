@@ -56,6 +56,11 @@ extern const uint8_t BITMAP_NOAA[12];
     extern const uint8_t BITMAP_FoxHuntTx[16];
 #endif
 
+#ifdef ENABLE_AIRCRAFT_RADAR
+    /* 16x16 top-down airplane: [page0 rows0-7], [page1 rows8-15] */
+    extern const uint8_t BITMAP_Aircraft[2][16];
+#endif
+
 #ifndef ENABLE_CUSTOM_MENU_LAYOUT
     extern const uint8_t BITMAP_CurrentIndicator[8];
 #endif

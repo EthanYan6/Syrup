@@ -294,6 +294,9 @@ const char *const gSubMenu_SIDEFUNCTIONS_CN[] = {
     "\xe7\x8c\x8e\xe7\x8b\x90\xe6\xa8\xa1\xe5\xbc\x8f",
 # endif
 #endif
+#ifdef ENABLE_AIRCRAFT_RADAR
+    "\xe9\xa3\x9e\xe6\x9c\xba\xe9\x9b\xb7\xe8\xbe\xbe",
+#endif
 };
 
 /* 内、计、划 不在嵌入中文字库；第一行用 Inside，第三行用「频段」。 */

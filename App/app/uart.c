@@ -45,6 +45,9 @@
 #include "misc.h"
 #include "settings.h"
 #include "version.h"
+#ifdef ENABLE_AIRCRAFT_RADAR
+#include "app/aircraft.h"
+#endif
 
 #if defined(ENABLE_OVERLAY)
     #include "sram-overlay.h"
@@ -707,6 +710,45 @@ static void CMD_052F(uint32_t Port, const uint8_t *pBuffer)
 }
 #endif
 
+#ifdef ENABLE_AIRCRAFT_RADAR
+/* Push aircraft target + optional AM listen / open page.
+ * Payload (after header): callsign[8], altitude_m int32, distance_m uint16,
+ * frequency uint32 (10 Hz units, 0 = keep), flags uint8
+ *   bit0 = listen now, bit1 = open page
+ */
+typedef struct __attribute__((packed)) {
+	Header_t Header;
+	char     Callsign[8];
+	int32_t  AltitudeM;
+	uint16_t DistanceM;
+	uint32_t Frequency;
+	uint8_t  Flags;
+} CMD_0540_t;
+
+static void CMD_0540(uint32_t Port, const uint8_t *pBuffer)
+{
+	const CMD_0540_t *pCmd = (const CMD_0540_t *)pBuffer;
+	char callsign[9];
+	Header_t Reply;
+
+	(void)Port;
+
+	memcpy(callsign, pCmd->Callsign, 8);
+	callsign[8] = '\0';
+
+	AIRCRAFT_SetTarget(callsign,
+	                   pCmd->AltitudeM,
+	                   pCmd->DistanceM,
+	                   pCmd->Frequency,
+	                   (pCmd->Flags & 1u) != 0,
+	                   (pCmd->Flags & 2u) != 0);
+
+	Reply.ID   = 0x0541;
+	Reply.Size = 0;
+	SendReply(Port, &Reply, sizeof(Reply));
+}
+#endif
+
 #ifdef ENABLE_UART_RW_BK_REGS
 static void CMD_0601_ReadBK4819Reg(uint32_t Port, const uint8_t *pBuffer)
 {
@@ -960,6 +1002,12 @@ void UART_HandleCommand(uint32_t Port)
                 NVIC_SystemReset();
             #endif
             break;
+
+#ifdef ENABLE_AIRCRAFT_RADAR
+        case 0x0540:
+            CMD_0540(Port, pUART_Command->Buffer);
+            break;
+#endif
 
 #ifdef ENABLE_UART_RW_BK_REGS
         case 0x0601:

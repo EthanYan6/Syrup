@@ -10,6 +10,19 @@
 Web flasher: <https://ethanyan6.github.io/Syrup/>  
 Repo: <https://github.com/EthanYan6/Syrup>
 
+## 0. Highlights
+
+| Feature | Notes |
+|---------|--------|
+| **ZH / EN UI** | Menu **Language**; Chinese needs the SPI font |
+| **Dual PTT** | Hardware PTT → CH1, side key 1 → CH2 |
+| **Receive mode** | MAIN ONLY / Dual RX / Cross band / Main TX dual RX; always two rows on home |
+| **Aircraft radar** | Web ADS-B push + airband AM listen, keypad frequency entry |
+| **Browser tools** | Firmware / font / calib / writefreq / basic info / aircraft radar |
+| **Fusion extras** | Spectrum, FM, Fox Hunt, BEAM, games, and more (see README) |
+
+Arrow-key direction follows menu **SetNav**: UV-K1 left/right layout, UV-K5(8) up/down layout.
+
 ## 1. Browser
 
 Use **Chrome / Edge / Opera** (Web Serial required).
@@ -79,6 +92,43 @@ How this maps to the home screen:
 
 All four modes keep two rows on the home screen. Dual RX respond keys the channel you heard; Cross band and Main TX dual RX may listen on the other row, but PTT always keys the inverted main channel.
 
-## 6. More
+## 6. Aircraft radar
 
-Full docs will be expanded later. Maintainer: **BD1AHN**.
+Dedicated **Aircraft radar** page: FM-style status chrome; airplane icon + inverted large callsign; then left-aligned, evenly spaced altitude / distance / airband AM frequency. Labels follow menu **Language**.
+
+Default frequency is typically **121.500 MHz** (or the radio’s current airband freq after a web push). Step with the nav keys, or enter digits on the keypad.
+
+### Open the page on the radio
+
+1. Open the menu and assign a side-key short/long action (or MENU long-press).
+2. Choose **AIRCRAFT RADAR** (Chinese: **飞机雷达**) and save.
+3. Press that key to open the page; press the same action again to leave, or press **EXIT** on the page to return to the home screen.
+
+### Push from the website
+
+1. Serve the site with `python docs/serve.py` (browsers cannot call ADS-B APIs directly).
+2. Power the radio on into the **normal UI** (not BOOT).
+3. Open the **Aircraft Radar** tab and click **Connect radio**, then pick the serial port.
+4. Allow location, wait for the scan, then **select an aircraft** (or use **Push to radio**): callsign / altitude / distance are sent to the radio, the aircraft page opens, and AM airband RX starts.
+
+If the serial port is not connected, selection only shows a connect hint and does not change radio data. ADS-B does **not** include ATC frequencies; push sends `frequency: 0` so the radio keeps its current airband freq.
+
+### Listening and keys
+
+| Key | Effect |
+|-----|--------|
+| Enter page / **MENU** | Tune AM RX on the displayed frequency (108–137 MHz airband) |
+| **0–9** | Enter frequency (6 digits, e.g. `121500`; live preview with `-` placeholders) |
+| **\*** | Idle: jump to 121.500; while typing: decimal point (e.g. `121*500`) |
+| **Nav keys** | Step frequency and retune AM (cancels an in-progress entry). Direction follows menu **SetNav**: K1 left/right, K5 up/down |
+| **EXIT** | While typing: backspace; otherwise: back to home (frequency stays) |
+
+Incomplete entry times out and cancels; the locked frequency is shown again.
+
+### Kept after unplug
+
+The selected target is stored in SPI flash. After USB unplug or reboot, opening the aircraft page still shows the last flight. A factory reset / erase of that sector clears it.
+
+## 7. More
+
+See the repo [README](https://github.com/EthanYan6/Syrup) for Syrup highlights and upstream Fusion features. Maintainer: **BD1AHN**.

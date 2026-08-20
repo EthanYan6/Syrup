@@ -3000,6 +3000,12 @@ body.help-page {
   gap: 8px;
   flex-shrink: 0;
 }
+.radar-howto {
+  margin: 0 0 10px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
 .radar-meta {
   font-size: 0.82em;
   color: var(--text-muted);

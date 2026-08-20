@@ -625,6 +625,51 @@ async function sendMessage(msg) {
   await writer.write(makePacket(msg));
 }
 
+/** Shared by radar tab: connect + push selected aircraft to the radio LCD. */
+window.SyrupSerial = {
+  isConnected: function () {
+    return !!(port && writer);
+  },
+  /** Normal-UI serial (same as calib / writefreq). Not bootloader flash. */
+  connect: async function () {
+    await connect();
+  },
+  disconnect: async function () {
+    await disconnect();
+  },
+  /**
+   * @param {{callsign:string, altitudeM:number, distanceM:number, frequency?:number, listen?:boolean, openPage?:boolean}} target
+   */
+  pushAircraft: async function (target) {
+    if (!writer) {
+      throw new Error('not_connected');
+    }
+    const MSG_AIRCRAFT = 0x0540;
+    const msg = createMessage(MSG_AIRCRAFT, 19);
+    const v = new DataView(msg.buffer);
+    const cs = String((target && target.callsign) || '').toUpperCase().replace(/[^A-Z0-9\-]/g, '').slice(0, 8);
+    for (let i = 0; i < 8; i++) {
+      msg[4 + i] = i < cs.length ? cs.charCodeAt(i) : 0;
+    }
+    let alt = (target && typeof target.altitudeM === 'number' && isFinite(target.altitudeM))
+      ? Math.round(target.altitudeM)
+      : -2147483648;
+    v.setInt32(12, alt, true);
+    let dist = 0xFFFF;
+    if (target && typeof target.distanceM === 'number' && isFinite(target.distanceM) && target.distanceM >= 0) {
+      dist = Math.min(0xFFFE, Math.round(target.distanceM));
+    }
+    v.setUint16(16, dist, true);
+    const freq = (target && target.frequency) ? (target.frequency >>> 0) : 0;
+    v.setUint32(18, freq, true);
+    let flags = 0;
+    if (target && target.listen) flags |= 1;
+    if (target && target.openPage) flags |= 2;
+    msg[22] = flags;
+    await sendMessage(msg);
+  }
+};
+
 function makePacket(msg) {
   let msgLen = msg.length;
   if (msgLen % 2) msgLen++;

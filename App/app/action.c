@@ -54,6 +54,9 @@
 #ifdef ENABLE_FEAT_F4HWN_FOXHUNT
     #include "app/foxhunt.h"
 #endif
+#ifdef ENABLE_AIRCRAFT_RADAR
+    #include "app/aircraft.h"
+#endif
 #ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
     #include "ui/menu.h"
 #endif
@@ -148,6 +151,9 @@ void (*const action_opt_table[])(void) = {
 #endif
 #ifdef ENABLE_FEAT_F4HWN_FOXHUNT
     [ACTION_OPT_FOXHUNT] = &ACTION_FoxHunt,
+#endif
+#ifdef ENABLE_AIRCRAFT_RADAR
+    [ACTION_OPT_AIRCRAFT] = &ACTION_Aircraft,
 #endif
 };
 
