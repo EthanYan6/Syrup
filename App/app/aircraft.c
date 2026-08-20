@@ -717,6 +717,11 @@ void AIRCRAFT_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 		}
 		break;
 
+	case KEY_F:
+		/* Long-press F: same keypad lock as main/FM (status-bar padlock only). */
+		GENERIC_Key_F(bKeyPressed, bKeyHeld);
+		break;
+
 	default:
 		if (!bKeyHeld)
 			gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;

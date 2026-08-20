@@ -121,6 +121,7 @@ If the serial port is not connected, selection only shows a connect hint and doe
 | **0–9** | Enter frequency (6 digits, e.g. `121500`; live preview with `-` placeholders) |
 | **\*** | Idle: jump to 121.500; while typing: decimal point (e.g. `121*500`) |
 | **Nav keys** | Step frequency and retune AM (cancels an in-progress entry). Direction follows menu **SetNav**: K1 left/right, K5 up/down |
+| **Hold F** | Lock / unlock keypad (status-bar padlock only; no on-page hint) |
 | **EXIT** | While typing: backspace; otherwise: back to home (frequency stays) |
 
 Incomplete entry times out and cancels; the locked frequency is shown again.
