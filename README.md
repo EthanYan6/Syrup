@@ -77,11 +77,21 @@ https://ethanyan6.github.io/Syrup/
 | English manual | [docs/data/manual.en.md](./docs/data/manual.en.md) |
 | Releases | https://github.com/EthanYan6/Syrup/releases |
 
-本地预览站点（飞机雷达需同源代理）：
+本地预览站点（飞机雷达也可走 Cloudflare Worker，GitHub Pages 同样可用）：
 
 ```bash
 python docs/serve.py
 ```
+
+GitHub Pages 上飞机雷达依赖 Cloudflare Worker 代理（`docs/cloudflare-worker`）。若飞机刷不出来，请确认 Worker 仍在线；首次部署：
+
+```bash
+cd docs/cloudflare-worker
+npx wrangler login
+npx wrangler deploy
+```
+
+部署后把 `docs/js/radar.js` 里的 `DEFAULT_REMOTE_AIRCRAFT_API` 改成你的 `*.workers.dev/api/aircraft` 地址。
 
 ### 推荐刷机顺序
 

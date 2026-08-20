@@ -18,8 +18,22 @@
 
   var RADIUS_KM = 80;
   var POLL_MS = 10000;
-  /** Same-origin proxy (docs/serve.py). Direct OpenSky calls fail CORS in browsers. */
-  var AIRCRAFT_API = '/api/aircraft';
+  /**
+   * Aircraft JSON endpoints (tried in order).
+   * 1) Local docs/serve.py → /api/aircraft
+   * 2) Optional override: window.SYRUP_AIRCRAFT_API
+   * 3) Cloudflare Worker (for GitHub Pages; deploy docs/cloudflare-worker)
+   */
+  var DEFAULT_REMOTE_AIRCRAFT_API = 'https://syrup-radar.heady-iron.workers.dev/api/aircraft';
+
+  function aircraftEndpoints() {
+    var list = ['/api/aircraft'];
+    if (typeof window.SYRUP_AIRCRAFT_API === 'string' && window.SYRUP_AIRCRAFT_API) {
+      list.push(window.SYRUP_AIRCRAFT_API);
+    }
+    list.push(DEFAULT_REMOTE_AIRCRAFT_API);
+    return list;
+  }
 
   var state = {
     active: false,
@@ -345,60 +359,77 @@
       lon: String(state.userLon),
       radiusKm: String(RADIUS_KM)
     });
+    var endpoints = aircraftEndpoints();
+    var qi = params.toString();
 
     state.fetching = true;
     setStatus('radarStatusFetching');
 
-    fetch(AIRCRAFT_API + '?' + params.toString(), { cache: 'no-store' })
-      .then(function (res) {
-        if (res.status === 429) {
-          state.retryAfterMs = Date.now() + 30000;
-          throw new Error('rate_limited');
-        }
-        if (res.status === 404) {
-          throw new Error('no_proxy');
-        }
-        if (!res.ok) {
-          throw new Error('http_' + res.status);
-        }
-        state.retryAfterMs = 0;
-        return res.json();
-      })
-      .then(function (data) {
-        if (data && data.error) {
-          throw new Error(data.error);
-        }
-        state.aircraft = parseAircraftPayload(data);
-        var d = new Date();
-        state.lastUpdated =
-          String(d.getHours()).padStart(2, '0') + ':' +
-          String(d.getMinutes()).padStart(2, '0') + ':' +
-          String(d.getSeconds()).padStart(2, '0');
-        updateMeta();
-        if (state.selectedIcao) {
-          selectAircraft(state.selectedIcao, { skipPush: true });
-        } else {
-          renderList();
-        }
-        if (state.aircraft.length === 0) {
-          setStatus('radarStatusEmpty');
-        } else {
-          setStatus('radarStatusOk', { n: state.aircraft.length });
-        }
-      })
-      .catch(function (err) {
-        if (err && err.message === 'rate_limited') {
-          setStatus('radarStatusRateLimited');
-        } else if (err && err.message === 'no_proxy') {
-          setStatus('radarStatusNeedProxy');
-        } else {
-          setStatus('radarStatusError');
-          console.warn('radar fetch', err);
-        }
-      })
-      .finally(function () {
+    function tryAt(index) {
+      if (index >= endpoints.length) {
+        setStatus('radarStatusError');
         state.fetching = false;
-      });
+        return;
+      }
+      var base = endpoints[index];
+      fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + qi, { cache: 'no-store' })
+        .then(function (res) {
+          if (res.status === 429) {
+            state.retryAfterMs = Date.now() + 30000;
+            throw new Error('rate_limited');
+          }
+          /* Local Pages has no /api → 404; try next endpoint */
+          if (res.status === 404 || res.status === 502 || res.status === 503) {
+            throw new Error('try_next');
+          }
+          if (!res.ok) {
+            throw new Error('http_' + res.status);
+          }
+          return res.json().then(function (data) {
+            if (data && data.error) {
+              throw new Error('try_next');
+            }
+            return data;
+          });
+        })
+        .then(function (data) {
+          state.retryAfterMs = 0;
+          state.aircraft = parseAircraftPayload(data);
+          var d = new Date();
+          state.lastUpdated =
+            String(d.getHours()).padStart(2, '0') + ':' +
+            String(d.getMinutes()).padStart(2, '0') + ':' +
+            String(d.getSeconds()).padStart(2, '0');
+          updateMeta();
+          if (state.selectedIcao) {
+            selectAircraft(state.selectedIcao, { skipPush: true });
+          } else {
+            renderList();
+          }
+          if (state.aircraft.length === 0) {
+            setStatus('radarStatusEmpty');
+          } else {
+            setStatus('radarStatusOk', { n: state.aircraft.length });
+          }
+          state.fetching = false;
+        })
+        .catch(function (err) {
+          if (err && err.message === 'rate_limited') {
+            setStatus('radarStatusRateLimited');
+            state.fetching = false;
+            return;
+          }
+          if (err && (err.message === 'try_next' || err.message === 'Failed to fetch' ||
+              err.name === 'TypeError')) {
+            tryAt(index + 1);
+            return;
+          }
+          console.warn('radar fetch', base, err);
+          tryAt(index + 1);
+        });
+    }
+
+    tryAt(0);
   }
 
   function clearPoll() {

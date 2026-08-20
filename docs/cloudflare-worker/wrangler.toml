@@ -1,0 +1,6 @@
+name = "syrup-radar"
+main = "src/index.js"
+compatibility_date = "2026-08-20"
+
+[vars]
+SERVICE = "syrup-radar"
