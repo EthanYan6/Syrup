@@ -16,7 +16,8 @@ Repo: <https://github.com/EthanYan6/Syrup>
 |---------|--------|
 | **ZH / EN UI** | Menu **Language**; Chinese needs the SPI font |
 | **Dual PTT** | Hardware PTT → CH1, side key 1 → CH2 |
-| **Receive mode** | MAIN ONLY / Dual RX / Cross band / Main TX dual RX; always two rows on home |
+| **Receive mode** | MAIN ONLY / Dual RX / Cross band / Main TX dual RX / **Triple watch** |
+| **Yan ID** | FSK callsign after unkey; the other radio shows it on the home screen |
 | **Aircraft radar** | Web ADS-B push + airband AM listen, keypad frequency entry |
 | **Browser tools** | Firmware / font / calib / writefreq / basic info / aircraft radar |
 | **Fusion extras** | Spectrum, FM, Fox Hunt, BEAM, games, and more (see README) |
@@ -74,7 +75,7 @@ Change **Side Key 1 Short** or **Side Key 1 Long** to another action (e.g. **NON
 
 ## 5. Receive mode
 
-Menu **Receive mode** (RxMode) chooses how the two home-screen channels listen and transmit. The layout is the same in all four modes: **CH1** and **CH2** are always shown, and invert always marks the main channel. What changes is which row the radio listens on, which row PTT keys, and which row the waveform / S-meter / last-RX / DTMF follow.
+Menu **Receive mode** (RxMode) chooses how the home-screen channels listen and transmit. The first four modes share the same layout: **CH1** and **CH2** are always shown, and invert always marks the main channel. What changes is which row the radio listens on, which row PTT keys, and which row the waveform / S-meter / last-RX / DTMF follow. The fifth option, **Triple watch**, uses three rows and remaps the side keys — see the next section.
 
 | Option | Listen | Transmit | On the home screen |
 |--------|--------|----------|--------------------|
@@ -82,17 +83,91 @@ Menu **Receive mode** (RxMode) chooses how the two home-screen channels listen a
 | **DUAL RX RESPOND** | Polls CH1 / CH2 about every 100 ms; stops on the channel with signal | **The channel you just heard** | Invert stays on main even if the other row has audio. Waveform / S-meter / DTMF / last-RX follow the row that actually opened squelch. After RX it waits about 1 s then polls again; after TX it waits about 4 s |
 | **CROSS BAND** | **The non-main channel only** | **Always the inverted main** | If CH1 is inverted, you are listening on CH2. Waveform, S-meter, and DTMF appear on the non-inverted row |
 | **MAIN TX DUAL RX** | Same dual listen as Dual RX | **Always the inverted main** | Sounds like Dual RX, but PTT does not follow the channel you just heard. After RX it resumes polling sooner (about 1 s) |
+| **TRI WATCH** | Polls CH1 / CH2 / CH3 about every 100 ms; stops on the channel with signal | **Hardware PTT → CH1, side key 1 → CH2, side key 2 → CH3** | Three rows, no waveform bar. The row that actually opened squelch blinks **RX** and shows an S-meter |
 
 How this maps to the home screen:
 
-- **Invert** = main channel. It does not follow RX. It only changes when you switch the main channel, or with dual PTT (hardware PTT → CH1, side key 1 → CH2).
+- **Invert** = main channel. It does not follow RX. It only changes when you switch the main channel, with dual PTT (hardware PTT → CH1, side key 1 → CH2), or with triple watch (plus side key 2 → CH3).
 - **Waveform / S-meter** = the channel currently being demodulated.
 - **DTMF** = the channel that received the digits; it stays there until timeout and does not jump with polling or invert.
 - **Speaker + name** at the bottom = last channel that opened squelch, not necessarily the main channel.
 
-All four modes keep two rows on the home screen. Dual RX respond keys the channel you heard; Cross band and Main TX dual RX may listen on the other row, but PTT always keys the inverted main channel.
+The first four modes keep two rows on the home screen. Dual RX respond keys the channel you heard; Cross band and Main TX dual RX may listen on the other row, but PTT always keys the inverted main channel. Triple watch has its own section.
 
-## 6. Aircraft radar
+## 6. Triple watch
+
+When enabled, the home screen shows **CH1 / CH2 / CH3**. The radio polls all three about every 100 ms and stops on the row with signal. Transmit does not follow the last RX channel: hardware PTT keys CH1, side key 1 keys CH2, side key 2 keys CH3. The channel that is transmitting becomes the main (inverted) row, and stays selected after you unkey so you can keep editing it.
+
+Triple watch and dual PTT cannot run together. Enabling triple watch clears side key 1 / side key 2 short and long actions to **NONE**, and hides those four menu items. Cross band is forced off. The 1750 Hz tone on side key 2 during TX is also disabled.
+
+### Enable
+
+1. Open the menu and go to **Receive mode** (**RxMode**).
+2. Choose **TRI WATCH** (Chinese: **三守**) and confirm.
+
+CH3 is a third independent VFO (frequency or memory). It defaults to about **433.500 MHz** and is stored in flash, so it survives reboot.
+
+### Use
+
+| Key | Effect |
+|-----|--------|
+| Hold hardware PTT | TX on CH1; CH1 inverted on home |
+| Hold side key 1 | TX on CH2; CH2 inverted on home |
+| Hold side key 2 | TX on CH3; CH3 inverted on home |
+| Hold both | Hardware PTT wins (CH1); if you release PTT while still holding a side key, that side key’s channel starts TX |
+| **F + 2** | Cycle the main channel CH1 → CH2 → CH3 (invert follows) |
+| Release | Stop TX |
+
+While triple watch is on, the whole side key 1 and side key 2 are channel PTTs (press = TX, release = stop). Any other short/long action on those keys is ignored.
+
+Frequency entry, memory stepping, and keypad entry all apply to the inverted (main) row. Arrow-key direction still follows menu **SetNav**.
+
+### On the home screen
+
+- **Invert** = main channel (the one you just keyed or selected with F+2).
+- The row that opened squelch blinks **RX** and shows an **S-meter**. After the signal drops, the RX tag stays until you change that row’s frequency or memory.
+- There is no waveform bar; CH3 uses that space. A low-battery or keypad-lock message temporarily covers the CH3 row.
+- **DTMF** and **Yan ID** still attach to the row that actually received them.
+
+Listen timing matches Dual RX: about 100 ms between polls, about 1 s after RX, about 4 s after TX.
+
+### Disable
+
+Change **Receive mode** back to one of the other four options. If the main channel was CH3, it returns to CH1. You can then reassign side key 1 / side key 2 short and long actions.
+
+## 7. Yan ID
+
+After you unkey, the radio does not play a normal Roger / MDC beep. It sends a short FSK packet with your callsign (up to 6 characters). The packet is compatible with Dondji / mangosteen GGM2 Yan ID. If the other radio has Yan ID receive on, the incoming callsign appears on that channel’s home-screen row.
+
+### Enable
+
+1. Open the menu, go to **Roger**, choose **Yan ID**, and confirm.
+2. Open **Yan ID**, enter your callsign, and save. An empty ID is not transmitted.
+3. To see other people’s IDs: open **Yan Rx** (Chinese: **接收 Yan ID**) and set it **ON**. This item only appears when Roger is already Yan ID.
+
+### Edit the callsign
+
+Up to **6** characters. On save, only **A–Z** and **0–9** are kept (letters are forced uppercase; spaces are dropped). Editing is similar to a channel name:
+
+| Key | Effect |
+|-----|--------|
+| **2–9** | Pick a letter (then **1–4** to confirm a candidate) |
+| **F / #** | Toggle uppercase letters ↔ digits |
+| **0–9** | In digit mode, enter the number directly |
+| **EXIT** | Backspace; on the first character, leave edit without saving |
+| **MENU** | Save |
+
+### Use
+
+Transmit: talk, then release PTT. If a callsign is stored, Yan ID is sent as the tail. The other radio does not need to press anything.
+
+Receive: both radios on the same frequency, both with Roger set to Yan ID, and the receiver with **Yan Rx** on. The received ID replaces that channel’s name, with a small phone icon, for about **6 seconds**, then the name comes back. Your own just-sent packet is ignored, so the home screen does not echo yourself.
+
+During send/receive the radio briefly switches to narrowband, then restores the previous bandwidth. You do not need to change bandwidth by hand.
+
+The callsign is stored in SPI flash and survives unplug / reboot. A factory reset or erase of that sector clears it.
+
+## 8. Aircraft radar
 
 Dedicated **Aircraft radar** page: FM-style status chrome; airplane icon + inverted large callsign; then left-aligned, evenly spaced altitude / distance / airband AM frequency. Labels follow menu **Language**.
 
@@ -130,6 +205,6 @@ Incomplete entry times out and cancels; the locked frequency is shown again.
 
 The selected target is stored in SPI flash. After USB unplug or reboot, opening the aircraft page still shows the last flight. A factory reset / erase of that sector clears it.
 
-## 7. More
+## 9. More
 
 See the repo [README](https://github.com/EthanYan6/Syrup) for Syrup highlights and upstream Fusion features. Maintainer: **BD1AHN**.
