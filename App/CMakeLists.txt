@@ -25,6 +25,8 @@ target_sources(App INTERFACE
     app/main.c
     app/menu.c
     app/scanner.c
+    app/yan_id_packet.c
+    app/yan_id_rf.c
     audio.c
     bitmaps.c
     bitmap_syrup.c

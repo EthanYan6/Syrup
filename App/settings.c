@@ -301,10 +301,11 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     #ifdef ENABLE_ALARM
         gEeprom.ALARM_MODE                 = (Data[0] <  2) ? Data[0] : true;
     #endif
-    gEeprom.ROGER                          = (Data[1] <  3) ? Data[1] : ROGER_MODE_OFF;
+    gEeprom.ROGER                          = (Data[1] <  4) ? Data[1] : ROGER_MODE_OFF;
     gEeprom.REPEATER_TAIL_TONE_ELIMINATION = (Data[2] < 11) ? Data[2] : 0;
     gEeprom.TX_VFO                         = (Data[3] <  2) ? Data[3] : 0;
     gEeprom.BATTERY_TYPE                   = (Data[4] < BATTERY_TYPE_UNKNOWN) ? Data[4] : BATTERY_TYPE_1600_MAH;
+    gEeprom.yan_id_rx                      = (Data[5] == 1);
 
     {
         uint8_t i;
@@ -318,6 +319,22 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
             gEeprom.HOME_LABEL[i] = (char)raw[i];
         }
         gEeprom.HOME_LABEL[HOME_LABEL_MAX_BYTES] = 0;
+    }
+
+    {
+        uint8_t yan[YAN_ID_LEN];
+        uint8_t i;
+        PY25Q16_ReadBuffer(YAN_ID_FLASH_ADDR, yan, sizeof(yan));
+        memset(gEeprom.yan_id, 0, sizeof(gEeprom.yan_id));
+        for (i = 0; i < YAN_ID_LEN; i++) {
+            const char c = (char)yan[i];
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+                gEeprom.yan_id[i] = c;
+            else if (c >= 'a' && c <= 'z')
+                gEeprom.yan_id[i] = (char)(c - 32);
+            else
+                break;
+        }
     }
 
     // 0ED0..0ED7
@@ -1072,6 +1089,7 @@ void SETTINGS_SaveSettings(void)
     State[2] = gEeprom.REPEATER_TAIL_TONE_ELIMINATION;
     State[3] = gEeprom.TX_VFO;
     State[4] = gEeprom.BATTERY_TYPE;
+    State[5] = gEeprom.yan_id_rx ? 1 : 0;
 
     memset(SecBuf + 0x20, 0, HOME_LABEL_FLASH_SIZE);
     memcpy(SecBuf + 0x20, gEeprom.HOME_LABEL, HOME_LABEL_MAX_BYTES);
@@ -1226,6 +1244,15 @@ void SETTINGS_SaveSettings(void)
         PY25Q16_ReadBuffer(0x00A170, langHint, sizeof(langHint));
         langHint[0] = gUiLanguage & 1u;
         PY25Q16_WriteBuffer(0x00A170, langHint, sizeof(langHint), false);
+    }
+
+    {
+        uint8_t yan[YAN_ID_LEN];
+        uint8_t i;
+        memset(yan, 0, sizeof(yan));
+        for (i = 0; i < YAN_ID_LEN && gEeprom.yan_id[i]; i++)
+            yan[i] = (uint8_t)gEeprom.yan_id[i];
+        PY25Q16_WriteBuffer(YAN_ID_FLASH_ADDR, yan, sizeof(yan), false);
     }
 }
 

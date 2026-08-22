@@ -70,10 +70,11 @@ const char *const gSubMenu_PONMSG_CN[] = {
     "\xe6\x97\xa0",                     /* NONE */
 };
 
-const char gSubMenu_ROGER_CN[][6] = {
+const char gSubMenu_ROGER_CN[][7] = {
     "\xe5\x85\xb3",
     "ROGER",
     "MDC",
+    "Yan ID",
 };
 
 const char gSubMenu_RESET_CN[][8] = {

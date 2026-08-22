@@ -23,6 +23,7 @@
 #include "ui/helper.h"
 #include "ui/inputbox.h"
 #include "ui/ui.h"
+#include "app/yan_id_rf.h"
 
 /* Layout: two channel rows on top; wave / last-RX / battery at bottom */
 #define SH_STATUS_H        8u
@@ -108,6 +109,15 @@ static const uint8_t s_spk_bitmap[SH_SPK_W] = {
 	0b11011011,
 	0b10011001,
 };
+
+/* Walkie: 7×7 body, 2×3 antenna on top-right (right edges aligned). */
+#define SH_PHONE_W      7u
+#define SH_PHONE_GAP    2u
+#define SH_PHONE_ANT_W  2u
+#define SH_PHONE_ANT_H  3u
+#define SH_PHONE_BODY_H 7u
+
+static void draw_col_bitmap(uint8_t x, uint8_t y_top, const uint8_t *cols, uint8_t w);
 
 /* Screen-absolute pixel (0..63): y 0..7 → status line, else framebuffer */
 static void draw_pixel(uint8_t x, uint8_t y, bool black)
@@ -530,29 +540,50 @@ static void draw_channel_row(uint8_t vfo)
 	}
 
 	/* name / VFO state on the right of the top line */
-	if (VfoState[vfo] != VFO_STATE_NORMAL &&
-	    VfoState[vfo] < _VFO_STATE_LAST_ELEMENT &&
-	    VfoStateStr[VfoState[vfo]] != NULL &&
-	    VfoStateStr[VfoState[vfo]][0] != '\0') {
-		snprintf(String, sizeof(String), "%s", VfoStateStr[VfoState[vfo]]);
-	} else {
-		SETTINGS_FetchChannelName(String, gEeprom.ScreenChannel[vfo]);
-		if (String[0] == 0) {
-			if (IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo]))
-				snprintf(String, sizeof(String), "CH-%04u",
-				         gEeprom.ScreenChannel[vfo] + 1u);
-			else
-				snprintf(String, sizeof(String), "VFO-%u", (unsigned)(vfo + 1u));
-		}
-	}
-#ifdef ENABLE_CHINESE
-	String[CHANNEL_NAME_MAX_BYTES] = 0;
-#else
-	String[10] = 0;
-#endif
 	{
-		const uint8_t name_left = draw_right_small(String, name_y);
-		if (IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo])) {
+		const bool show_yan =
+			VfoState[vfo] == VFO_STATE_NORMAL &&
+			gYanId_RX_timeout != 0 &&
+			vfo == gYanId_RX_vfo;
+		uint8_t name_left;
+
+		if (VfoState[vfo] != VFO_STATE_NORMAL &&
+		    VfoState[vfo] < _VFO_STATE_LAST_ELEMENT &&
+		    VfoStateStr[VfoState[vfo]] != NULL &&
+		    VfoStateStr[VfoState[vfo]][0] != '\0') {
+			snprintf(String, sizeof(String), "%s", VfoStateStr[VfoState[vfo]]);
+		} else if (show_yan) {
+			snprintf(String, sizeof(String), "%s", gYanId_RX);
+		} else {
+			SETTINGS_FetchChannelName(String, gEeprom.ScreenChannel[vfo]);
+			if (String[0] == 0) {
+				if (IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo]))
+					snprintf(String, sizeof(String), "CH-%04u",
+					         gEeprom.ScreenChannel[vfo] + 1u);
+				else
+					snprintf(String, sizeof(String), "VFO-%u", (unsigned)(vfo + 1u));
+			}
+		}
+#ifdef ENABLE_CHINESE
+		String[CHANNEL_NAME_MAX_BYTES] = 0;
+#else
+		String[10] = 0;
+#endif
+		name_left = draw_right_small(String,
+			(uint8_t)(name_y + (show_yan ? SH_PHONE_ANT_H : 0u)));
+		if (show_yan) {
+			const uint8_t ix = (uint8_t)(name_left - SH_PHONE_W - SH_PHONE_GAP);
+			const uint8_t ax = (uint8_t)(ix + SH_PHONE_W - SH_PHONE_ANT_W);
+			name_left = ix;
+			fill_rect(ax, name_y,
+			          (uint8_t)(ax + SH_PHONE_ANT_W - 1u),
+			          (uint8_t)(name_y + SH_PHONE_ANT_H - 1u), true);
+			fill_rect(ix, (uint8_t)(name_y + SH_PHONE_ANT_H),
+			          (uint8_t)(ix + SH_PHONE_W - 1u),
+			          (uint8_t)(name_y + SH_PHONE_ANT_H + SH_PHONE_BODY_H - 1u),
+			          true);
+		}
+		if (!show_yan && IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo])) {
 			char num[6];
 			snprintf(num, sizeof(num), "%u",
 			         (unsigned)(gEeprom.ScreenChannel[vfo] + 1u));
@@ -977,17 +1008,6 @@ static void format_last_rx_name(char *out, size_t out_sz)
 #endif
 }
 
-static void draw_spk_bitmap(uint8_t x, uint8_t y_top)
-{
-	for (uint8_t col = 0; col < SH_SPK_W; col++) {
-		const uint8_t bits = s_spk_bitmap[col];
-		for (uint8_t row = 0; row < SH_SPK_H; row++) {
-			if (bits & (uint8_t)(1u << row))
-				draw_pixel((uint8_t)(x + col), (uint8_t)(y_top + row), true);
-		}
-	}
-}
-
 /* Column-major 8px-tall glyph/icon into screen pixels (status-style bitmaps) */
 static void draw_col_bitmap(uint8_t x, uint8_t y_top, const uint8_t *cols, uint8_t w)
 {
@@ -1129,7 +1149,7 @@ static void draw_last_rx_placeholder(void)
 		x = 0u;
 	else
 		x = (uint8_t)((LCD_WIDTH - total_w) / 2u);
-	draw_spk_bitmap(x, (uint8_t)(name_y + SH_SPK_Y_OFF));
+	draw_col_bitmap(x, (uint8_t)(name_y + SH_SPK_Y_OFF), s_spk_bitmap, SH_SPK_W);
 	draw_small_text(name, (uint8_t)(x + SH_SPK_W + SH_SPK_GAP), name_y, true);
 
 	draw_battery_status_row(bat_y);

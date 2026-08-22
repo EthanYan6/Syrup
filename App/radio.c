@@ -19,6 +19,7 @@
 
 #include "am_fix.h"
 #include "app/dtmf.h"
+#include "app/yan_id_rf.h"
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
     #include "app/rxtx_log.h"
 #endif
@@ -935,6 +936,12 @@ void RADIO_SetupRegisters(bool switchToForeground)
 
     BK4819_EnableDTMF();
     InterruptMask |= BK4819_REG_3F_DTMF_5TONE_FOUND;
+
+    YAN_RF_DisableRx();
+    if (YAN_RF_ReceiveEnabled()) {
+        YAN_RF_EnableRx();
+        InterruptMask |= BK4819_REG_3F_FSK_RX_SYNC | BK4819_REG_3F_FSK_RX_FINISHED | BK4819_REG_3F_FSK_FIFO_ALMOST_FULL;
+    }
 
     RADIO_SetupAGC(gRxVfo->Modulation == MODULATION_AM, false);
     //RADIO_SetupAGC(false, false);

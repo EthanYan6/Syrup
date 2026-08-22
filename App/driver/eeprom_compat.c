@@ -75,6 +75,7 @@ static const AddrMapping_t ADDR_MAPPINGS[] = {
                                                 // Settings F4HWN * 8 Bytes (0x00C000)      0x00A158 -> 0x00A160
                                                 // Settings Version * 16 Bytes              0x00A160 -> 0x00A170
                                                 // Language * 2 Bytes                       0x00A170 -> 0x00A172
+                                                // Yan ID * 6 Bytes                         0x00A172 -> 0x00A178
                                                 // VFO C indices * 8 Bytes                  0x00A178 -> 0x00A180
                                                 // VFO C freq * 7 bands * 16 Bytes          0x00A180 -> 0x00A1F0
 

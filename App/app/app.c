@@ -46,6 +46,7 @@
 #ifdef ENABLE_AIRCRAFT_RADAR
     #include "app/aircraft.h"
 #endif
+#include "app/yan_id_rf.h"
 #include "app/scanner.h"
 #if defined(ENABLE_UART) || defined(ENABLE_USB)
     #include "app/uart.h"
@@ -1055,6 +1056,8 @@ static void CheckRadioInterrupts(void)
             BEAM_StorePacket();
         }
 #endif
+        if (YAN_RF_ReceiveEnabled())
+            YAN_RF_OnRadioInterrupt(interrupts.__raw);
     }
 }
 
@@ -1668,6 +1671,7 @@ void APP_TimeSlice10ms(void)
     }
 #endif
 
+    YAN_RF_Tick10ms();
 
     UI_SyrupHome_Tick10ms();
 #ifdef ENABLE_FMRADIO
@@ -1884,6 +1888,8 @@ void APP_TimeSlice500ms(void)
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
     RXTX_LOG_Tick500ms();
 #endif
+
+    YAN_RF_Tick500ms();
 
 #ifdef ENABLE_FEAT_F4HWN_RX_TX_TIMER
     if (gSetting_set_tmr && (gCurrentFunction == FUNCTION_TRANSMIT || FUNCTION_IsRx())) {

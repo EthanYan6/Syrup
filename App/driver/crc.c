@@ -21,12 +21,12 @@ void CRC_Init(void)
 {
 }
 
-uint16_t CRC_Calculate(const void *pBuffer, uint16_t Size)
+uint16_t CRC_CalculateEx(const void *pBuffer, uint16_t Size, uint16_t init)
 {
     const uint8_t *pData = (const uint8_t *)pBuffer;
     uint16_t i, Crc;
 
-    Crc = 0;
+    Crc = init;
     for (i = 0; i < Size; i++)
     {
         Crc ^= (pData[i] << 8);
@@ -46,4 +46,9 @@ uint16_t CRC_Calculate(const void *pBuffer, uint16_t Size)
     }
 
     return Crc;
+}
+
+uint16_t CRC_Calculate(const void *pBuffer, uint16_t Size)
+{
+    return CRC_CalculateEx(pBuffer, Size, 0);
 }

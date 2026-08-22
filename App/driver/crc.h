@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 void CRC_Init(void);
+uint16_t CRC_CalculateEx(const void *pBuffer, uint16_t Size, uint16_t init);
 uint16_t CRC_Calculate(const void *pBuffer, uint16_t Size);
 
 #endif

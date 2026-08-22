@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "app/dtmf.h"
+#include "app/yan_id_rf.h"
 #if defined(ENABLE_FMRADIO)
     #include "app/fm.h"
 #endif
@@ -146,6 +147,7 @@ void FUNCTION_Transmit()
 {
     // if DTMF is enabled when TX'ing, it changes the TX audio filtering !! .. 1of11
     BK4819_DisableDTMF();
+    YAN_RF_DisableRx();
 
 #ifdef ENABLE_DTMF_CALLING
     // clear the DTMF RX buffer

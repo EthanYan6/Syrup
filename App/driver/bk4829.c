@@ -24,6 +24,7 @@
 #include "audio.h"
 
 #include "driver/bk4819.h"
+#include "app/yan_id_rf.h"
 #include "driver/gpio.h"
 #include "driver/system.h"
 #include "driver/systick.h"
@@ -1857,6 +1858,8 @@ void BK4819_PlayRoger(BK4819_FilterBandwidth_t Bandwidth)
         BK4819_PlayRogerNormal(Bandwidth);
     } else if (gEeprom.ROGER == ROGER_MODE_MDC) {
         BK4819_PlayRogerMDC();
+    } else if (gEeprom.ROGER == ROGER_MODE_YAN_ID) {
+        (void)YAN_RF_Send();
     }
 }
 

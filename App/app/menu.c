@@ -420,6 +420,51 @@ void MENU_StopCssScan(void)
     gUpdateStatus = true;
 }
 
+static void MENU_BeginYanIdEdit(void)
+{
+    size_t n;
+
+    memset(edit, MEM_NAME_EDIT_PAD, (size_t)YAN_ID_LEN);
+    edit[YAN_ID_LEN] = 0;
+    n = strlen(gEeprom.yan_id);
+    if (n > 0)
+        memcpy(edit, gEeprom.yan_id, n > (size_t)YAN_ID_LEN ? (size_t)YAN_ID_LEN : n);
+#ifdef ENABLE_CHINESE
+    gMemNameInputMode = MEM_NAME_INPUT_UPPER;
+    gMemNameCandidateCount = 0;
+#else
+    edit_is_uppercase = true;
+#endif
+    edit_index = 0;
+    memcpy(edit_original, edit, sizeof(edit_original));
+}
+
+static void MENU_SaveYanIdEdit(void)
+{
+    char yan[YAN_ID_LEN + 1];
+    uint8_t j = 0;
+    uint8_t i;
+
+    memset(yan, 0, sizeof(yan));
+    for (i = 0; i < YAN_ID_LEN && edit[i]; i++) {
+        char c = edit[i];
+        if (c == ' ' || c == MEM_NAME_EDIT_PAD)
+            continue;
+        if (c >= 'a' && c <= 'z')
+            c = (char)(c - 32);
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+            yan[j++] = c;
+            if (j >= YAN_ID_LEN)
+                break;
+        }
+    }
+    strncpy(gEeprom.yan_id, yan, YAN_ID_LEN);
+    gEeprom.yan_id[YAN_ID_LEN] = 0;
+    gRequestSaveSettings = true;
+    edit_index = -1;
+    gIsInSubMenu = false;
+}
+
 int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
 {
     *pMin = 0;
@@ -491,6 +536,14 @@ int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
         case MENU_ROGER:
             //*pMin = 0;
             *pMax = ARRAY_SIZE(gSubMenu_ROGER) - 1;
+            break;
+
+        case MENU_YAN_ID:
+            *pMax = 0;
+            break;
+
+        case MENU_YAN_ID_RX:
+            *pMax = ARRAY_SIZE(gSubMenu_OFF_ON) - 1;
             break;
 
         case MENU_PONMSG:
@@ -1184,6 +1237,18 @@ void MENU_AcceptSetting(void)
 
         case MENU_ROGER:
             gEeprom.ROGER = gSubMenuSelection;
+            gFlagReconfigureVfos = true;
+            UI_MENU_BuildView();
+            break;
+
+        case MENU_YAN_ID:
+            if (edit_index >= 0)
+                MENU_SaveYanIdEdit();
+            break;
+
+        case MENU_YAN_ID_RX:
+            gEeprom.yan_id_rx = gSubMenuSelection != 0;
+            gFlagReconfigureVfos = true;
             break;
 
         case MENU_AM:
@@ -1744,6 +1809,10 @@ void MENU_ShowCurrentSetting(void)
             gSubMenuSelection = gEeprom.ROGER;
             break;
 
+        case MENU_YAN_ID_RX:
+            gSubMenuSelection = gEeprom.yan_id_rx ? 1 : 0;
+            break;
+
         case MENU_AM:
             gSubMenuSelection = gTxVfo->Modulation;
             break;
@@ -1963,10 +2032,12 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
     gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
 
-    if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && edit_index >= 0)
+    {
+        const uint8_t cur_menu = UI_MENU_GetCurrentMenuId();
+        if ((cur_menu == MENU_MEM_NAME || cur_menu == MENU_YAN_ID) && edit_index >= 0)
     {
 #ifdef ENABLE_CHINESE
-        const int name_limit = (int)CHANNEL_NAME_MAX_BYTES;
+        const int name_limit = (cur_menu == MENU_YAN_ID) ? (int)YAN_ID_LEN : (int)CHANNEL_NAME_MAX_BYTES;
 
         if (edit_index >= name_limit)
         {
@@ -2014,6 +2085,12 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
                 gRequestDisplayScreen = DISPLAY_MENU;
                 return;
             }
+            gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            return;
+        }
+
+        if (cur_menu == MENU_YAN_ID)
+        {
             gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
             return;
         }
@@ -2119,7 +2196,8 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
         return;
 #else
-        if (edit_index >= 10)
+        const int name_limit = (cur_menu == MENU_YAN_ID) ? (int)YAN_ID_LEN : 10;
+        if (edit_index >= name_limit)
             return;
 
         uint8_t key_idx = Key - KEY_0;
@@ -2148,7 +2226,7 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         }
 
         char c = char_map[key_idx][edit_char_index];
-        if (edit_is_uppercase && c >= 'a' && c <= 'z')
+        if ((edit_is_uppercase || cur_menu == MENU_YAN_ID) && c >= 'a' && c <= 'z')
         {
             c -= 32;
         }
@@ -2157,6 +2235,7 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         gRequestDisplayScreen = DISPLAY_MENU;
         return;
 #endif
+    }
     }
 
     if (bKeyHeld)
@@ -2332,6 +2411,24 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 
 static void MENU_Key_EXIT(bool bKeyPressed, bool bKeyHeld)
 {
+    if (UI_MENU_GetCurrentMenuId() == MENU_YAN_ID && edit_index >= 0)
+    {
+        if (!bKeyPressed)
+            return;
+        gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+        BACKLIGHT_TurnOn();
+        if (edit_index > 0) {
+            edit_index--;
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
+        edit_index = -1;
+        gIsInSubMenu = false;
+        gInputBoxIndex = 0;
+        gFlagRefreshSetting = true;
+        gRequestDisplayScreen = DISPLAY_MENU;
+        return;
+    }
 #ifdef ENABLE_CHINESE
     if (MENU_IsEditingName())
     {
@@ -2618,7 +2715,17 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
 #endif
         }
 
-        return;
+        if (m != MENU_YAN_ID)
+            return;
+    }
+
+    if (UI_MENU_GetCurrentMenuId() == MENU_YAN_ID)
+    {
+        if (edit_index < 0) {
+            MENU_BeginYanIdEdit();
+            gRequestDisplayScreen = DISPLAY_MENU;
+            return;
+        }
     }
 
     if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME)
@@ -2816,6 +2923,12 @@ static void MENU_Key_STAR(const bool bKeyPressed, const bool bKeyHeld)
 
     gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
 
+    if (UI_MENU_GetCurrentMenuId() == MENU_YAN_ID && edit_index >= 0)
+    {
+        gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+        return;
+    }
+
     if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && edit_index >= 0)
     {
         if (edit_index < (int)CHANNEL_NAME_MAX_BYTES)
@@ -2901,6 +3014,9 @@ static void MENU_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
     if (!gEeprom.SET_NAV && gIsInSubMenu) {
         Direction = -Direction;
     }
+
+    if (UI_MENU_GetCurrentMenuId() == MENU_YAN_ID && gIsInSubMenu && edit_index >= 0)
+        return;
 
 #ifdef ENABLE_CHINESE
     if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && gUiLanguage == UI_LANGUAGE_CN && gIsInSubMenu &&
@@ -3133,6 +3249,24 @@ void MENU_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             MENU_Key_STAR(bKeyPressed, bKeyHeld);
             break;
         case KEY_F:
+            if (UI_MENU_GetCurrentMenuId() == MENU_YAN_ID && edit_index >= 0)
+            {
+#ifdef ENABLE_CHINESE
+                if (!bKeyHeld && bKeyPressed)
+                {
+                    gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+                    gMemNameCandidateCount = 0;
+                    gMemNameInputMode = (gMemNameInputMode == MEM_NAME_INPUT_DIGIT)
+                        ? MEM_NAME_INPUT_UPPER
+                        : MEM_NAME_INPUT_DIGIT;
+                    gRequestDisplayScreen = DISPLAY_MENU;
+                }
+#else
+                if (!bKeyHeld && bKeyPressed)
+                    gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+#endif
+                break;
+            }
             if (UI_MENU_GetCurrentMenuId() == MENU_MEM_NAME && edit_index >= 0)
             {
 #ifdef ENABLE_CHINESE

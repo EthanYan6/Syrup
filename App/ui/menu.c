@@ -116,6 +116,8 @@ const t_menu_item MenuList[] =
     {"Voice",       MENU_VOICE         },
 #endif
     {"Roger",       MENU_ROGER         },
+    {"Yan ID",      MENU_YAN_ID        },
+    {"Yan Rx",      MENU_YAN_ID_RX     },
     {"STE",         MENU_STE           },
     {"RP STE",      MENU_RP_STE        },
     {"1 Call",      MENU_1_CALL        },
@@ -329,7 +331,8 @@ const char* const gSubMenu_ROGER[] =
 {
     "OFF",
     "ROGER",
-    "MDC"
+    "MDC",
+    "Yan ID"
 };
 
 const char* const gSubMenu_RESET[] =
@@ -597,6 +600,8 @@ uint8_t UI_MENU_GetViewPos(uint8_t id)
 
 static bool UI_MENU_ItemHidden(uint8_t menu_id)
 {
+    if (menu_id == MENU_YAN_ID_RX && gEeprom.ROGER != ROGER_MODE_YAN_ID)
+        return true;
     if (gEeprom.TRIPLE_WATCH &&
         (menu_id == MENU_F1SHRT || menu_id == MENU_F1LONG ||
          menu_id == MENU_F2SHRT || menu_id == MENU_F2LONG))
@@ -673,7 +678,7 @@ static const uint8_t CatAudio[]   = {
     MENU_SET_AUD,
 #endif
 };
-static const uint8_t CatRadio[]   = { MENU_SQL, MENU_STE, MENU_RP_STE, MENU_ROGER, MENU_VOX, MENU_TDR };
+static const uint8_t CatRadio[]   = { MENU_SQL, MENU_STE, MENU_RP_STE, MENU_ROGER, MENU_YAN_ID, MENU_YAN_ID_RX, MENU_VOX, MENU_TDR };
 static const uint8_t CatDtmf[]    = { MENU_UPCODE, MENU_DWCODE, MENU_D_ST, MENU_D_PRE, MENU_D_LIVE_DEC };
 static const uint8_t CatService[] = { MENU_F_LOCK, MENU_350EN, MENU_BATCAL, MENU_BATTYP, MENU_SET_NAV, MENU_RESET };
 
@@ -970,6 +975,16 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 			break;
 		case MENU_ROGER:
 			strcpy(out, SUBV(gSubMenu_ROGER[gSubMenuSelection], gSubMenu_ROGER_CN[gSubMenuSelection]));
+			break;
+		case MENU_YAN_ID:
+			if (gEeprom.yan_id[0])
+				strncpy(out, gEeprom.yan_id, out_len - 1u);
+			else
+				strcpy(out, "--");
+			out[out_len - 1u] = 0;
+			break;
+		case MENU_YAN_ID_RX:
+			strcpy(out, SUBV(gSubMenu_OFF_ON[gSubMenuSelection], gSubMenu_OFF_ON_CN[gSubMenuSelection]));
 			break;
 		case MENU_PTT_ID:
 			strcpy(out, SUBV(gSubMenu_PTT_ID[gSubMenuSelection], gSubMenu_PTT_ID_CN[gSubMenuSelection]));
@@ -1593,7 +1608,7 @@ static void UI_MENU_DrawMemNameSymbolSixPack(unsigned int x1, unsigned int x2, u
     }
 }
 
-static void UI_MENU_DrawMemNameEdit(unsigned int sub_val_x1, unsigned int sub_val_x2)
+static void UI_MENU_DrawMemNameEdit(unsigned int sub_val_x1, unsigned int sub_val_x2, size_t max_b)
 {
     /*
      * Layout (title already at y~0..11):
@@ -1608,7 +1623,6 @@ static void UI_MENU_DrawMemNameEdit(unsigned int sub_val_x1, unsigned int sub_va
     const uint8_t ul_y      = (uint8_t)(name_bot + 1u);
     const uint8_t y_strip   = (uint8_t)(ul_y + 4u);
     const uint8_t strip_bot = (uint8_t)(y_strip + 11u);
-    const size_t max_b = (size_t)CHANNEL_NAME_MAX_BYTES;
 
     switch (gMemNameInputMode)
     {
@@ -1685,7 +1699,7 @@ static void UI_MENU_DrawMemNameEdit(unsigned int sub_val_x1, unsigned int sub_va
             slot_count++;
         }
 
-        if (edit_index >= 0 && (size_t)edit_index == CHANNEL_NAME_MAX_BYTES && slot_count < 15 && x + eng_cw <= sub_val_x2)
+        if (edit_index >= 0 && (size_t)edit_index == max_b && slot_count < 15 && x + eng_cw <= sub_val_x2)
         {
             slot_x[slot_count] = x;
             slot_w[slot_count] = eng_cw;
@@ -2039,6 +2053,19 @@ void UI_DisplayMenu(void)
         case MENU_SET_SAV:
 #endif
 #endif
+        case MENU_YAN_ID:
+            if (gIsInSubMenu && edit_index >= 0)
+            {
+#ifdef ENABLE_CHINESE
+                UI_MENU_DrawMemNameEdit(2u, (unsigned int)(LCD_WIDTH - 1u), (size_t)YAN_ID_LEN);
+#else
+                UI_PrintStringSmallNormal(edit, 0, LCD_WIDTH - 1, 3);
+#endif
+                already_printed = true;
+                break;
+            }
+            UI_MENU_FormatValue(m, String, sizeof(String));
+            break;
         case MENU_SAVE:
         case MENU_TDR:
         case MENU_TOT:
@@ -2048,6 +2075,7 @@ void UI_DisplayMenu(void)
         case MENU_BAT_TXT:
         case MENU_PONMSG:
         case MENU_ROGER:
+        case MENU_YAN_ID_RX:
         case MENU_PTT_ID:
         case MENU_F_LOCK:
         case MENU_RESET:
@@ -2214,7 +2242,7 @@ void UI_DisplayMenu(void)
                 else
                 {
 #ifdef ENABLE_CHINESE
-                    UI_MENU_DrawMemNameEdit(2u, (unsigned int)(LCD_WIDTH - 1u));
+                    UI_MENU_DrawMemNameEdit(2u, (unsigned int)(LCD_WIDTH - 1u), (size_t)CHANNEL_NAME_MAX_BYTES);
 #else
                     const uint8_t y_ch   = UI_MENU_StackedLineY(0, 3, area_y0, area_y1, 2u);
                     const uint8_t y_edit = UI_MENU_StackedLineY(1, 3, area_y0, area_y1, 2u);
