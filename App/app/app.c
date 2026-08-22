@@ -863,7 +863,10 @@ static void DualwatchAlternate(void)
         else
     #endif
     {   // toggle between VFO's
-        gEeprom.RX_VFO = !gEeprom.RX_VFO;
+        if (gEeprom.TRIPLE_WATCH)
+            gEeprom.RX_VFO = (uint8_t)((gEeprom.RX_VFO + 1u) % 3u);
+        else
+            gEeprom.RX_VFO = !gEeprom.RX_VFO;
         gRxVfo         = &gEeprom.VfoInfo[gEeprom.RX_VFO];
 
         if (!gDualWatchActive)
@@ -1491,7 +1494,7 @@ void CheckKeys(void)
                 {   // start transmitting
                     boot_counter_10ms   = 0;
 #ifdef ENABLE_FEAT_F4HWN
-                    if (ACTION_DualPttEnabled())
+                    if (ACTION_DualPttEnabled() || ACTION_TripleWatchEnabled())
                         ACTION_DualPttOnHardwarePress();
 #endif
                     gPttIsPressed       = true;
@@ -1541,7 +1544,7 @@ void CheckKeys(void)
                 boot_counter_10ms   = 0;
                 gPttDebounceCounter = 0;
 #ifdef ENABLE_FEAT_F4HWN
-                if (ACTION_DualPttEnabled())
+                if (ACTION_DualPttEnabled() || ACTION_TripleWatchEnabled())
                     ACTION_DualPttOnHardwarePress();
 #endif
                 gPttIsPressed       = true;
@@ -2390,6 +2393,7 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         lck_condition = lck_condition && Key != KEY_PTT
 #ifdef ENABLE_FEAT_F4HWN
                         && !(Key == KEY_SIDE1 && ACTION_DualPttEnabled())
+                        && !(ACTION_TripleWatchEnabled() && (Key == KEY_SIDE1 || Key == KEY_SIDE2))
 #endif
         ;
 
@@ -2442,6 +2446,12 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     }
 
 #ifdef ENABLE_FEAT_F4HWN
+    if (ACTION_TripleWatchEnabled() && (Key == KEY_SIDE1 || Key == KEY_SIDE2) &&
+        !(gScreenToDisplay == DISPLAY_MAIN && gDTMF_InputMode))
+    {
+        ACTION_HandleChannelPtt((Key == KEY_SIDE1) ? 1u : 2u, bKeyPressed, bKeyHeld);
+        goto Skip;
+    }
     if (Key == KEY_SIDE1 && ACTION_DualPttEnabled() &&
         !(gScreenToDisplay == DISPLAY_MAIN && gDTMF_InputMode))
     {
@@ -2503,7 +2513,11 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
                 goto Skip;
             }
 
+#ifdef ENABLE_FEAT_F4HWN
+            if (Key == KEY_SIDE2 && !ACTION_TripleWatchEnabled()) { // transmit 1750Hz tone
+#else
             if (Key == KEY_SIDE2) { // transmit 1750Hz tone
+#endif
                 Code = 0xFE;
             }
             else {
@@ -2655,6 +2669,7 @@ Skip:
         if (gFlagResetVfos) {
             RADIO_ConfigureChannel(0, gVfoConfigureMode);
             RADIO_ConfigureChannel(1, gVfoConfigureMode);
+            RADIO_ConfigureChannel(2, gVfoConfigureMode);
         }
         else
             RADIO_ConfigureChannel(gEeprom.TX_VFO, gVfoConfigureMode);

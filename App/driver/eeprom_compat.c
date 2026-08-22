@@ -62,7 +62,7 @@ static const AddrMapping_t ADDR_MAPPINGS[] = {
                                                 // (ENABLE_AIRCRAFT_RADAR, app/aircraft.c; same sector
                                                 // tail — do not place past 0x009FFF / into 0x00A000)
 
-    _MK_MAPPING(0x00A000, 0x00A000, 0x00A170),  // Settings * 16 Bytes (ex 0x004000)        0x00A000 -> 0x00A010
+    _MK_MAPPING(0x00A000, 0x00A000, 0x00A1F0),  // Settings * 16 Bytes (ex 0x004000)        0x00A000 -> 0x00A010
                                                 // Settings * 16 Bytes (ex 0x005000)        0x00A010 -> 0x00A020
                                                 // Settings FM * 8 Bytes (0x006000)         0x00A020 -> 0x00A028
                                                 // MR FM * 128 Bytes (0x003000)             0x00A028 -> 0x00A0A8
@@ -74,6 +74,9 @@ static const AddrMapping_t ADDR_MAPPINGS[] = {
                                                 // Settings * 8 Bytes (0x00B000)            0x00A150 -> 0x00A158
                                                 // Settings F4HWN * 8 Bytes (0x00C000)      0x00A158 -> 0x00A160
                                                 // Settings Version * 16 Bytes              0x00A160 -> 0x00A170
+                                                // Language * 2 Bytes                       0x00A170 -> 0x00A172
+                                                // VFO C indices * 8 Bytes                  0x00A178 -> 0x00A180
+                                                // VFO C freq * 7 bands * 16 Bytes          0x00A180 -> 0x00A1F0
 
     _MK_MAPPING(0x010000, 0x00B000, 0x00B200),  // Calibration 512 Bytes!!!
 

@@ -43,7 +43,7 @@ VFO_Info_t    *gTxVfo;
 VFO_Info_t    *gRxVfo;
 VFO_Info_t    *gCurrentVfo;
 DCS_CodeType_t gCurrentCodeType;
-VfoState_t     VfoState[2];
+VfoState_t     VfoState[3];
 
 const char gModulationStr[MODULATION_UKNOWN][4] = {
     [MODULATION_FM]="FM",
@@ -256,7 +256,12 @@ void RADIO_ValidateAndSetCode(FREQ_Config_t *pFreq_Config, uint8_t tmp) {
 
 void RADIO_ConfigureChannel(const unsigned int VFO, const unsigned int configure)
 {
-    VFO_Info_t *pVfo = &gEeprom.VfoInfo[VFO];
+    VFO_Info_t *pVfo;
+
+    if (VFO > 2u)
+        return;
+
+    pVfo = &gEeprom.VfoInfo[VFO];
 
     if (!gSetting_350EN) {
         if (gEeprom.FreqChannel[VFO] == FREQ_CHANNEL_FIRST + BAND5_350MHz)
@@ -333,6 +338,8 @@ void RADIO_ConfigureChannel(const unsigned int VFO, const unsigned int configure
     uint32_t base;
     if (IS_MR_CHANNEL(channel))
         base = channel * 16;
+    else if (VFO >= 2u)
+        base = VFO3_FREQ_FLASH_ADDR + ((channel - FREQ_CHANNEL_FIRST) * 16);
     else
         base = 0x009000 + ((channel - FREQ_CHANNEL_FIRST) * 32) + (VFO * 16);
 
@@ -721,8 +728,25 @@ static void RADIO_SelectCurrentVfo(void)
     gCurrentVfo = (gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF || gEeprom.DUAL_WATCH != DUAL_WATCH_OFF) ? gRxVfo : gTxVfo;
 }
 
+uint8_t RADIO_VfoCount(void)
+{
+    return gEeprom.TRIPLE_WATCH ? 3u : 2u;
+}
+
+void RADIO_ClampVfos(void)
+{
+    const uint8_t max = (uint8_t)(RADIO_VfoCount() - 1u);
+
+    if (gEeprom.TX_VFO > max)
+        gEeprom.TX_VFO = 0;
+    if (gEeprom.RX_VFO > max)
+        gEeprom.RX_VFO = gEeprom.TX_VFO;
+}
+
 void RADIO_SelectVfos(void)
 {
+    RADIO_ClampVfos();
+
     // if crossband without DW is used then RX_VFO is the opposite to the TX_VFO
     gEeprom.RX_VFO = (gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF || gEeprom.DUAL_WATCH != DUAL_WATCH_OFF) ? gEeprom.TX_VFO : !gEeprom.TX_VFO;
 
@@ -1167,13 +1191,15 @@ void RADIO_SetVfoState(VfoState_t State)
     if (State == VFO_STATE_NORMAL) {
         VfoState[0] = VFO_STATE_NORMAL;
         VfoState[1] = VFO_STATE_NORMAL;
+        VfoState[2] = VFO_STATE_NORMAL;
     } else if (State == VFO_STATE_VOLTAGE_HIGH) {
         VfoState[0] = VFO_STATE_VOLTAGE_HIGH;
         VfoState[1] = VFO_STATE_TX_DISABLE;
+        VfoState[2] = VFO_STATE_TX_DISABLE;
     } else {
         // 1of11
         const unsigned int vfo = (gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF) ? gEeprom.RX_VFO : gEeprom.TX_VFO;
-        VfoState[vfo] = State;
+        VfoState[vfo < 3u ? vfo : 0u] = State;
     }
 
     gVFOStateResumeCountdown_500ms = (State == VFO_STATE_NORMAL) ? 0 : vfo_state_resume_countdown_500ms;

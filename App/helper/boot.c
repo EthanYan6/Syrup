@@ -87,6 +87,7 @@ void BOOT_ProcessMode(BOOT_Mode_t Mode)
         if (Mode == BOOT_MODE_AIRCOPY)
         {
             gEeprom.DUAL_WATCH               = DUAL_WATCH_OFF;
+            gEeprom.TRIPLE_WATCH             = false;
             gEeprom.BATTERY_SAVE             = 0;
             #ifdef ENABLE_VOX
                 gEeprom.VOX_SWITCH           = false;

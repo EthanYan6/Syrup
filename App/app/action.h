@@ -37,11 +37,15 @@ void ACTION_SwitchDemodul(void);
 
 #ifdef ENABLE_FEAT_F4HWN
     bool ACTION_DualPttEnabled(void);
+    bool ACTION_TripleWatchEnabled(void);
     bool ACTION_SidePttActive(void);
     void ACTION_SyncDualPttKeyActions(void);
+    void ACTION_SyncTripleWatchKeys(void);
     bool ACTION_Side1KeyHeld(void);
+    bool ACTION_Side2KeyHeld(void);
     void ACTION_SetMainVfo(uint8_t vfo);
     void ACTION_HandleSide1Ptt(bool bKeyPressed, bool bKeyHeld);
+    void ACTION_HandleChannelPtt(uint8_t vfo, bool bKeyPressed, bool bKeyHeld);
     void ACTION_DualPttOnHardwarePress(void);
     void ACTION_DualPttOnHardwareRelease(void);
     void ACTION_RxMode(void);

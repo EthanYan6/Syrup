@@ -27,6 +27,9 @@
 #define HOME_LABEL_FLASH_SIZE  32u
 #define HOME_LABEL_MAX_BYTES   31u
 #define HOME_LABEL_DEFAULT     "BD1AHN"
+/* CH3 (triple watch): indices after language @ 0x00A170; VFO-C freq after that */
+#define VFO3_INDEX_FLASH_ADDR  0x00A178u
+#define VFO3_FREQ_FLASH_ADDR   0x00A180u
 
 #include "frequencies.h"
 #include <helper/battery.h>
@@ -187,9 +190,9 @@ typedef enum {
 } UI_Language_t;
 
 typedef struct {
-    uint16_t               ScreenChannel[2]; // current channels set in the radio (memory or frequency channels)
-    uint16_t               FreqChannel[2]; // last frequency channels used
-    uint16_t               MrChannel[2]; // last memory channels used
+    uint16_t               ScreenChannel[3]; // current channels set in the radio (memory or frequency channels)
+    uint16_t               FreqChannel[3]; // last frequency channels used
+    uint16_t               MrChannel[3]; // last memory channels used
 #ifdef ENABLE_NOAA
     uint16_t           NoaaChannel[2];
 #endif
@@ -234,6 +237,7 @@ typedef struct {
     bool                  TAIL_TONE_ELIMINATION;
     bool                  VFO_OPEN;
     uint8_t               DUAL_WATCH;
+    bool                  TRIPLE_WATCH;
     uint8_t               CROSS_BAND_RX_TX;
     uint8_t               BATTERY_SAVE;
     uint8_t               BACKLIGHT_TIME;
@@ -306,7 +310,7 @@ typedef struct {
     #endif
     uint8_t               DAC_GAIN;
 
-    VFO_Info_t            VfoInfo[2];
+    VFO_Info_t            VfoInfo[3];
     uint32_t              POWER_ON_PASSWORD;
     uint16_t              VOX1_THRESHOLD;
     uint16_t              VOX0_THRESHOLD;

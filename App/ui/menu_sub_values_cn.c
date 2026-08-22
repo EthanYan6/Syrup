@@ -27,6 +27,7 @@ const char *const gSubMenu_RXMode_CN[] = {
     "\xe5\x8f\x8c\xe9\xa2\x91\xe5\xae\x88\xe5\x80\x99",                 /* 双频守候 */
     "\xe8\xb7\xa8\xe6\xae\xb5",                                         /* 跨段 */
     "\xe4\xb8\xbb\xe5\x8f\x91\xe5\x8f\x8c\xe6\x94\xb6",                 /* 主发双收 */
+    "\xe4\xb8\x89\xe5\xae\x88",                                         /* 三守 */
 };
 
 const char *const gSubMenu_MDF_CN[] = {

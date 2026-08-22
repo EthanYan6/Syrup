@@ -1010,8 +1010,17 @@ void MENU_AcceptSetting(void)
             break;
 
         case MENU_TDR:
-            gEeprom.DUAL_WATCH = (gEeprom.TX_VFO + 1) * (gSubMenuSelection & 1);
-            gEeprom.CROSS_BAND_RX_TX = (gEeprom.TX_VFO + 1) * ((gSubMenuSelection & 2) > 0);
+            gEeprom.TRIPLE_WATCH = (gSubMenuSelection == 4);
+            if (gEeprom.TRIPLE_WATCH) {
+                gEeprom.DUAL_WATCH = (gEeprom.TX_VFO < 2u) ? (gEeprom.TX_VFO + 1) : DUAL_WATCH_CHAN_A;
+                gEeprom.CROSS_BAND_RX_TX = CROSS_BAND_OFF;
+                ACTION_SyncTripleWatchKeys();
+            } else {
+                gEeprom.DUAL_WATCH = (gEeprom.TX_VFO + 1) * (gSubMenuSelection & 1);
+                gEeprom.CROSS_BAND_RX_TX = (gEeprom.TX_VFO + 1) * ((gSubMenuSelection & 2) > 0);
+                if (gEeprom.TX_VFO > 1u)
+                    ACTION_SetMainVfo(0);
+            }
 
             #ifdef ENABLE_FEAT_F4HWN
                 gDW = gEeprom.DUAL_WATCH;
@@ -1020,7 +1029,9 @@ void MENU_AcceptSetting(void)
             #endif
 
             gFlagReconfigureVfos = true;
+            gFlagResetVfos       = true;
             gUpdateStatus        = true;
+            UI_MENU_BuildView();
             break;
 
         case MENU_BEEP:
@@ -1599,7 +1610,10 @@ void MENU_ShowCurrentSetting(void)
             break;
 
         case MENU_TDR:
-            gSubMenuSelection = (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF) + (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF) * 2;
+            if (gEeprom.TRIPLE_WATCH)
+                gSubMenuSelection = 4;
+            else
+                gSubMenuSelection = (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF) + (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF) * 2;
             break;
 
         case MENU_BEEP:

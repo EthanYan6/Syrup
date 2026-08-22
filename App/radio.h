@@ -147,7 +147,9 @@ extern VFO_Info_t    *gCurrentVfo;
 
 extern DCS_CodeType_t gCurrentCodeType;
 
-extern VfoState_t     VfoState[2];
+extern VfoState_t     VfoState[3];
+uint8_t  RADIO_VfoCount(void);
+void     RADIO_ClampVfos(void);
 
 // Human-readable label per VfoState_t (defined in ui/main.c), e.g. "TX DISABLE".
 extern const char *const VfoStateStr[];

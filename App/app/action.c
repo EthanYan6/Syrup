@@ -430,8 +430,16 @@ static bool gSidePttIsPressed;
 
 bool ACTION_DualPttEnabled(void)
 {
+    if (gEeprom.TRIPLE_WATCH)
+        return false;
+
     return gEeprom.KEY_1_SHORT_PRESS_ACTION == ACTION_OPT_PTT ||
            gEeprom.KEY_1_LONG_PRESS_ACTION  == ACTION_OPT_PTT;
+}
+
+bool ACTION_TripleWatchEnabled(void)
+{
+    return gEeprom.TRIPLE_WATCH;
 }
 
 bool ACTION_SidePttActive(void)
@@ -456,15 +464,31 @@ void ACTION_SyncDualPttKeyActions(void)
     }
 }
 
+void ACTION_SyncTripleWatchKeys(void)
+{
+    if (!gEeprom.TRIPLE_WATCH)
+        return;
+
+    gEeprom.KEY_1_SHORT_PRESS_ACTION = ACTION_OPT_NONE;
+    gEeprom.KEY_1_LONG_PRESS_ACTION  = ACTION_OPT_NONE;
+    gEeprom.KEY_2_SHORT_PRESS_ACTION = ACTION_OPT_NONE;
+    gEeprom.KEY_2_LONG_PRESS_ACTION  = ACTION_OPT_NONE;
+}
+
 bool ACTION_Side1KeyHeld(void)
 {
     return KEYBOARD_Poll() == KEY_SIDE1 || gKeyReading1 == KEY_SIDE1;
 }
 
+bool ACTION_Side2KeyHeld(void)
+{
+    return KEYBOARD_Poll() == KEY_SIDE2 || gKeyReading1 == KEY_SIDE2;
+}
+
 void ACTION_SetMainVfo(uint8_t vfo)
 {
-    if (vfo > 1u)
-        vfo = 1u;
+    if (vfo >= RADIO_VfoCount())
+        vfo = 0;
 
     if (gEeprom.TX_VFO == vfo)
         return;
@@ -482,7 +506,7 @@ void ACTION_SetMainVfo(uint8_t vfo)
 
     if (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF)
         gEeprom.CROSS_BAND_RX_TX = gEeprom.TX_VFO + 1;
-    if (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF)
+    if (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF && vfo < 2u)
         gEeprom.DUAL_WATCH = gEeprom.TX_VFO + 1;
 
     RADIO_SelectVfos();
@@ -512,7 +536,7 @@ static void ACTION_StopDualPttTx(void)
 
 void ACTION_DualPttOnHardwarePress(void)
 {
-    if (!ACTION_DualPttEnabled())
+    if (!ACTION_DualPttEnabled() && !ACTION_TripleWatchEnabled())
         return;
 
     if (gCurrentFunction == FUNCTION_TRANSMIT && !gPttIsPressed) {
@@ -525,6 +549,17 @@ void ACTION_DualPttOnHardwarePress(void)
 
 void ACTION_DualPttOnHardwareRelease(void)
 {
+    if (ACTION_TripleWatchEnabled()) {
+        if (ACTION_Side1KeyHeld()) {
+            ACTION_StartDualPttTx(1);
+            gSidePttIsPressed = true;
+        } else if (ACTION_Side2KeyHeld()) {
+            ACTION_StartDualPttTx(2);
+            gSidePttIsPressed = true;
+        }
+        return;
+    }
+
     if (!ACTION_DualPttEnabled() || !ACTION_Side1KeyHeld())
         return;
 
@@ -532,7 +567,7 @@ void ACTION_DualPttOnHardwareRelease(void)
     gSidePttIsPressed = true;
 }
 
-void ACTION_HandleSide1Ptt(bool bKeyPressed, bool bKeyHeld)
+void ACTION_HandleChannelPtt(uint8_t vfo, bool bKeyPressed, bool bKeyHeld)
 {
     if (SerialConfigInProgress())
         return;
@@ -549,7 +584,7 @@ void ACTION_HandleSide1Ptt(bool bKeyPressed, bool bKeyHeld)
             return;
 
         gSidePttIsPressed = true;
-        ACTION_StartDualPttTx(1);
+        ACTION_StartDualPttTx(vfo);
         return;
     }
 
@@ -559,6 +594,11 @@ void ACTION_HandleSide1Ptt(bool bKeyPressed, bool bKeyHeld)
         return;
 
     ACTION_StopDualPttTx();
+}
+
+void ACTION_HandleSide1Ptt(bool bKeyPressed, bool bKeyHeld)
+{
+    ACTION_HandleChannelPtt(1, bKeyPressed, bKeyHeld);
 }
 #endif
 
@@ -842,7 +882,7 @@ void ACTION_RxA(void)
 
 void ACTION_Ptt(void)
 {
-    if (ACTION_DualPttEnabled())
+    if (ACTION_DualPttEnabled() || ACTION_TripleWatchEnabled())
         return;
 
     gSetting_set_ptt_session = !gSetting_set_ptt_session;

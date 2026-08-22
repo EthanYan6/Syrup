@@ -164,8 +164,15 @@ void SETTINGS_InitEEPROM(void)
             gEeprom.VFO_OPEN = ((Data[6] >> 2) & 0x01) != 0 ? true : true;
         #endif
     #else
-        gEeprom.TAIL_TONE_ELIMINATION = (Data[6] < 2) ? Data[6] : false;
+        gEeprom.TAIL_TONE_ELIMINATION = Data[6] & 0x01;
     #endif
+    gEeprom.TRIPLE_WATCH = (Data[6] != 0xFF) && !!(Data[6] & 0x08);
+
+    if (gEeprom.TRIPLE_WATCH) {
+        if (gEeprom.DUAL_WATCH == DUAL_WATCH_OFF)
+            gEeprom.DUAL_WATCH = DUAL_WATCH_CHAN_A;
+        gEeprom.CROSS_BAND_RX_TX = CROSS_BAND_OFF;
+    }
 
     #ifdef ENABLE_FEAT_F4HWN_RESUME_STATE
         gEeprom.CURRENT_STATE =  Data[7]        & 0x07;   // bits 0..2
@@ -200,6 +207,14 @@ gEeprom.FreqChannel[0]   = IS_FREQ_CHANNEL(Data16[2]) ? Data16[2] : (FREQ_CHANNE
 gEeprom.ScreenChannel[1] = IS_VALID_CHANNEL(Data16[3]) ? Data16[3] : (FREQ_CHANNEL_FIRST + BAND6_400MHz);
 gEeprom.MrChannel[1]     = IS_MR_CHANNEL(Data16[4]) ? Data16[4] : MR_CHANNEL_FIRST;
 gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNEL_FIRST + BAND6_400MHz);
+
+{
+    uint16_t vfo3[4];
+    PY25Q16_ReadBuffer(VFO3_INDEX_FLASH_ADDR, vfo3, sizeof(vfo3));
+    gEeprom.ScreenChannel[2] = IS_VALID_CHANNEL(vfo3[0]) ? vfo3[0] : (FREQ_CHANNEL_FIRST + BAND6_400MHz);
+    gEeprom.MrChannel[2]     = IS_MR_CHANNEL(vfo3[1]) ? vfo3[1] : MR_CHANNEL_FIRST;
+    gEeprom.FreqChannel[2]   = IS_FREQ_CHANNEL(vfo3[2]) ? vfo3[2] : (FREQ_CHANNEL_FIRST + BAND6_400MHz);
+}
 
 #ifdef ENABLE_NOAA
     gEeprom.NoaaChannel[0]   = IS_NOAA_CHANNEL(Data16[6]) ? Data16[6] : NOAA_CHANNEL_FIRST;
@@ -247,6 +262,7 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     gEeprom.SCAN_RESUME_MODE             = (Data[5] < 105)            ? Data[5] : 14;
 #ifdef ENABLE_FEAT_F4HWN
     ACTION_SyncDualPttKeyActions();
+    ACTION_SyncTripleWatchKeys();
 #endif
     gEeprom.AUTO_KEYPAD_LOCK             = (Data[6] < 41)             ? Data[6] : 0;
 #ifdef ENABLE_FEAT_F4HWN
@@ -400,6 +416,7 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     {
         gEeprom.ScreenChannel[0] = gEeprom.MrChannel[0];
         gEeprom.ScreenChannel[1] = gEeprom.MrChannel[1];
+        gEeprom.ScreenChannel[2] = gEeprom.MrChannel[2];
     }
 
     // 0D60..0E27
@@ -818,16 +835,21 @@ void SETTINGS_FactoryReset(bool bIsAll)
     #ifdef ENABLE_FEAT_F4HWN_RESET_VFO
         RADIO_InitInfo(&gEeprom.VfoInfo[0], FREQ_CHANNEL_FIRST + BAND3_137MHz, 14550000);
         RADIO_InitInfo(&gEeprom.VfoInfo[1], FREQ_CHANNEL_FIRST + BAND6_400MHz, 43350000);
+        RADIO_InitInfo(&gEeprom.VfoInfo[2], FREQ_CHANNEL_FIRST + BAND6_400MHz, 43350000);
 
         gEeprom.ScreenChannel[0] = FREQ_CHANNEL_FIRST + BAND3_137MHz;
         gEeprom.ScreenChannel[1] = FREQ_CHANNEL_FIRST + BAND6_400MHz;
+        gEeprom.ScreenChannel[2] = FREQ_CHANNEL_FIRST + BAND6_400MHz;
         gEeprom.MrChannel[0]     = MR_CHANNEL_FIRST;
         gEeprom.MrChannel[1]     = MR_CHANNEL_FIRST;
+        gEeprom.MrChannel[2]     = MR_CHANNEL_FIRST;
         gEeprom.FreqChannel[0]   = FREQ_CHANNEL_FIRST + BAND3_137MHz;
         gEeprom.FreqChannel[1]   = FREQ_CHANNEL_FIRST + BAND6_400MHz;
+        gEeprom.FreqChannel[2]   = FREQ_CHANNEL_FIRST + BAND6_400MHz;
         
         SETTINGS_SaveChannel(FREQ_CHANNEL_FIRST + BAND3_137MHz, 0, &gEeprom.VfoInfo[0], 2);
         SETTINGS_SaveChannel(FREQ_CHANNEL_FIRST + BAND6_400MHz, 1, &gEeprom.VfoInfo[1], 2);
+        SETTINGS_SaveChannel(FREQ_CHANNEL_FIRST + BAND6_400MHz, 2, &gEeprom.VfoInfo[2], 2);
 
         gVfoStateChanged = true;
         gScheduleVfoSave = true;
@@ -895,6 +917,16 @@ void SETTINGS_SaveVfoIndicesFlush(void)
         #endif
 
             PY25Q16_WriteBuffer(0x00A010, Data16, sizeof(Data16), false);
+
+            {
+                uint16_t vfo3[4] = {
+                    gEeprom.ScreenChannel[2],
+                    gEeprom.MrChannel[2],
+                    gEeprom.FreqChannel[2],
+                    0
+                };
+                PY25Q16_WriteBuffer(VFO3_INDEX_FLASH_ADDR, vfo3, sizeof(vfo3), false);
+            }
         }
     }
 }
@@ -980,9 +1012,11 @@ void SETTINGS_SaveSettings(void)
         #ifdef ENABLE_FEAT_F4HWN_RESUME_STATE
           | ((gEeprom.VFO_OPEN & 0x01) << 2)
         #endif
+          | ((gEeprom.TRIPLE_WATCH ? 1u : 0u) << 3)
     ;
     #else
-        State[6] = gEeprom.TAIL_TONE_ELIMINATION;
+        State[6] = (uint8_t)((gEeprom.TAIL_TONE_ELIMINATION ? 1u : 0u) |
+                             ((gEeprom.TRIPLE_WATCH ? 1u : 0u) << 3));
     #endif
 
     #ifdef ENABLE_FEAT_F4HWN_RESUME_STATE
@@ -1206,9 +1240,12 @@ void SETTINGS_SaveChannel(uint16_t Channel, uint8_t VFO, const VFO_Info_t *pVFO,
     uint16_t OffsetVFO = 0 + Channel * 16;
 
     if (IS_FREQ_CHANNEL(Channel)) { // it's a VFO, not a channel
-        // 0x0C80
-        OffsetVFO  = (VFO == 0) ? 0x009000 : 0x009010;
-        OffsetVFO += (Channel - FREQ_CHANNEL_FIRST) * 32;
+        if (VFO >= 2)
+            OffsetVFO = VFO3_FREQ_FLASH_ADDR + (Channel - FREQ_CHANNEL_FIRST) * 16;
+        else {
+            OffsetVFO  = (VFO == 0) ? 0x009000 : 0x009010;
+            OffsetVFO += (Channel - FREQ_CHANNEL_FIRST) * 32;
+        }
     }
 
     if (Mode >= 2 || IS_FREQ_CHANNEL(Channel)) { // copy VFO to a channel
@@ -1457,6 +1494,7 @@ void SETTINGS_ResetTxLock(void)
 
     RADIO_ConfigureChannel(0, VFO_CONFIGURE_RELOAD);
     RADIO_ConfigureChannel(1, VFO_CONFIGURE_RELOAD);
+    RADIO_ConfigureChannel(2, VFO_CONFIGURE_RELOAD);
 
     #undef SETTINGS_ResetTxLock_BATCH
     #undef CHANNEL_SIZE

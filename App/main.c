@@ -126,6 +126,7 @@ void Main(void)
 
     RADIO_ConfigureChannel(0, VFO_CONFIGURE_RELOAD);
     RADIO_ConfigureChannel(1, VFO_CONFIGURE_RELOAD);
+    RADIO_ConfigureChannel(2, VFO_CONFIGURE_RELOAD);
 
     RADIO_SelectVfos();
 

@@ -668,6 +668,7 @@ static void CMD_052F(uint32_t Port, const uint8_t *pBuffer)
     const CMD_052F_t *pCmd = (const CMD_052F_t *)pBuffer;
 
     gEeprom.DUAL_WATCH                               = DUAL_WATCH_OFF;
+    gEeprom.TRIPLE_WATCH                             = false;
     gEeprom.CROSS_BAND_RX_TX                         = CROSS_BAND_OFF;
     gEeprom.RX_VFO                                   = 0;
     gEeprom.DTMF_SIDE_TONE                           = false;

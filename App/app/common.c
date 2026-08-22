@@ -28,7 +28,10 @@ void COMMON_SwitchVFOs()
 #ifdef ENABLE_SCAN_RANGES    
     gScanRangeStart = 0;
 #endif
-    gEeprom.TX_VFO ^= 1;
+    if (gEeprom.TRIPLE_WATCH)
+        gEeprom.TX_VFO = (uint8_t)((gEeprom.TX_VFO + 1u) % 3u);
+    else
+        gEeprom.TX_VFO ^= 1;
 
     if (gInputBoxIndex > 0) {
         gInputBoxIndex = 0;

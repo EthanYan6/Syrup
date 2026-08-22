@@ -32,6 +32,7 @@
 #define SH_CH_GAP          2u
 #define SH_CH0_Y           1u  /* both channel rows dropped 1px */
 #define SH_CH1_Y           (SH_CH0_Y + SH_CH_H + SH_CH_GAP)     /* 23 */
+#define SH_CH2_Y           44u /* former wave row — CH3 in triple watch */
 #define SH_WAVE_Y          44u /* keep bottom band; 1px gap after CH1 */
 #define SH_NAME_Y_OFF      0u
 #define SH_PARAM_Y_OFF     8u  /* mod/pwr/sql — 4px above former +12 */
@@ -85,6 +86,10 @@ static bool     s_was_rx;
 static bool     s_last_rx_valid;
 static uint8_t  s_last_rx_vfo;
 static uint16_t s_last_rx_channel;
+static uint8_t  s_triple_rx_vfo = 0xFF; /* sticky RX row in triple watch */
+static uint16_t s_triple_rx_ch;
+static uint32_t s_triple_rx_freq;
+static uint8_t  s_triple_blink;
 static bool     s_placeholder_blit_done;
 static uint8_t  s_tick_div;
 
@@ -307,9 +312,18 @@ static void invert_pixel(uint8_t x, uint8_t y)
 	}
 }
 
+static uint8_t channel_row_y(uint8_t vfo)
+{
+	if (vfo == 0u)
+		return SH_CH0_Y;
+	if (vfo == 1u)
+		return SH_CH1_Y;
+	return SH_CH2_Y;
+}
+
 static void invert_channel_row(uint8_t vfo)
 {
-	const uint8_t y0 = (vfo == 0u) ? SH_CH0_Y : SH_CH1_Y;
+	const uint8_t y0 = channel_row_y(vfo);
 	const uint8_t y1 = (uint8_t)(y0 + SH_CH_H - 1u);
 
 	/* Hairline above invert (CH1 uses the 1px left by dropping rows; not painted on invert top) */
@@ -348,10 +362,99 @@ static void draw_dtmf_live(uint8_t y, uint8_t x_right, const char *digits)
 	draw_smallest_abs(buf, x_left, y, true);
 }
 
+static uint8_t current_s_level(void)
+{
+	int16_t rssi_dBm = BK4819_GetRSSI_dBm();
+	uint8_t s_level;
+
+#ifdef ENABLE_AM_FIX
+	if (gSetting_AM_fix && gRxVfo->Modulation == MODULATION_AM)
+		rssi_dBm = (int16_t)(rssi_dBm + AM_fix_get_gain_diff());
+#endif
+	{
+		const unsigned int b = gEeprom.VfoInfo[gEeprom.RX_VFO].Band;
+		if (b < 7u)
+			rssi_dBm = (int16_t)(rssi_dBm + dBmCorrTable[b]);
+	}
+
+	/* IARU VHF/UHF: S9 = -93 dBm, 6 dB per S-unit */
+	if (rssi_dBm >= -93)
+		s_level = 9u;
+	else if (rssi_dBm < -141)
+		s_level = 0u;
+	else
+		s_level = (uint8_t)((rssi_dBm + 147) / 6);
+
+	return s_level;
+}
+
+static void remember_triple_rx_tune(void)
+{
+	if (s_triple_rx_vfo >= 3u)
+		return;
+	s_triple_rx_ch   = gEeprom.ScreenChannel[s_triple_rx_vfo];
+	s_triple_rx_freq = gEeprom.VfoInfo[s_triple_rx_vfo].freq_config_RX.Frequency;
+}
+
+static void latch_triple_rx(void)
+{
+	if (!gEeprom.TRIPLE_WATCH) {
+		s_triple_rx_vfo = 0xFF;
+		return;
+	}
+
+	if (FUNCTION_IsRx() && gEeprom.RX_VFO < 3u) {
+		s_triple_rx_vfo = gEeprom.RX_VFO;
+		remember_triple_rx_tune();
+		return;
+	}
+
+	if (s_triple_rx_vfo >= 3u)
+		return;
+
+	/* Left/right (KEY_UP/DOWN) changed this row's memory or freq */
+	if (gEeprom.ScreenChannel[s_triple_rx_vfo] != s_triple_rx_ch ||
+	    gEeprom.VfoInfo[s_triple_rx_vfo].freq_config_RX.Frequency != s_triple_rx_freq)
+		s_triple_rx_vfo = 0xFF;
+}
+
+static void draw_triple_rx_tag(uint8_t vfo)
+{
+	char sbuf[6];
+	const uint8_t top = channel_row_y(vfo);
+	const uint8_t badge_y = (uint8_t)(top + 1u);
+	const uint8_t box_y0 = (uint8_t)(badge_y - 1u);
+	const uint8_t box_y1 = (uint8_t)(badge_y + 5u);
+	const uint8_t ch_w = smallest_width("CH1");
+	const uint8_t ch_box_x1 = (uint8_t)(2u + ch_w);
+	const uint8_t rx_w = smallest_width("RX");
+	const uint8_t rx_x = (uint8_t)(ch_box_x1 + 3u);
+	const uint8_t rx_box_x0 = (uint8_t)(rx_x - 1u);
+	const uint8_t rx_box_x1 = (uint8_t)(rx_x + rx_w);
+	const uint8_t s_x = (uint8_t)(rx_box_x1 + 3u);
+	const uint8_t s_w = smallest_width("S9");
+	const bool live = FUNCTION_IsRx() && gEeprom.RX_VFO == vfo;
+
+	if (!gEeprom.TRIPLE_WATCH || s_triple_rx_vfo != vfo)
+		return;
+
+	fill_rect(rx_box_x0, box_y0, (uint8_t)(s_x + s_w), box_y1, false);
+
+	if ((gFlashLightBlinkCounter & 64u) != 0u) {
+		fill_rect(rx_box_x0, box_y0, rx_box_x1, box_y1, true);
+		draw_smallest_abs("RX", rx_x, badge_y, false);
+	}
+
+	if (live) {
+		snprintf(sbuf, sizeof(sbuf), "S%u", (unsigned)current_s_level());
+		draw_smallest_abs(sbuf, s_x, badge_y, true);
+	}
+}
+
 static void draw_channel_row(uint8_t vfo)
 {
 	const VFO_Info_t *info = &gEeprom.VfoInfo[vfo];
-	const uint8_t top = (vfo == 0u) ? SH_CH0_Y : SH_CH1_Y;
+	const uint8_t top = channel_row_y(vfo);
 	const uint8_t name_y = (uint8_t)(top + SH_NAME_Y_OFF);
 	const uint8_t badge_y = (uint8_t)(top + 1u);
 	const uint8_t param_y = (uint8_t)(top + SH_PARAM_Y_OFF);
@@ -382,6 +485,7 @@ static void draw_channel_row(uint8_t vfo)
 		fill_rect(box_x0, box_y0, box_x1, box_y1, true);
 		draw_smallest_abs(String, text_x, badge_y, false);
 	}
+	draw_triple_rx_tag(vfo);
 
 	/* frequency string (right column, also DTMF bound) */
 	if (gInputBoxIndex > 0 && gEeprom.TX_VFO == vfo) {
@@ -743,13 +847,7 @@ static void draw_s_meter_label(void)
 			rssi_dBm = (int16_t)(rssi_dBm + dBmCorrTable[b]);
 	}
 
-	/* IARU VHF/UHF: S9 = -93 dBm, 6 dB per S-unit */
-	if (rssi_dBm >= -93)
-		s_level = 9u;
-	else if (rssi_dBm < -141)
-		s_level = 0u;
-	else
-		s_level = (uint8_t)((rssi_dBm + 147) / 6);
+	s_level = current_s_level();
 
 	snprintf(buf, sizeof(buf), "S%u %d dBm", (unsigned)s_level, (int)rssi_dBm);
 
@@ -851,7 +949,7 @@ static void draw_tx_wave(void)
 static void capture_last_rx(void)
 {
 	s_last_rx_vfo = gEeprom.RX_VFO;
-	if (s_last_rx_vfo > 1u)
+	if (s_last_rx_vfo > 2u)
 		s_last_rx_vfo = 0u;
 	s_last_rx_channel = gEeprom.ScreenChannel[s_last_rx_vfo];
 	s_last_rx_valid = true;
@@ -1088,6 +1186,22 @@ void UI_SyrupHome_Tick10ms(void)
 		return;
 	s_tick_div = 0;
 
+	if (gEeprom.TRIPLE_WATCH) {
+		const bool rx = FUNCTION_IsRx();
+		latch_triple_rx();
+		if (rx) {
+			gUpdateDisplay = true;
+		} else if (s_triple_rx_vfo < 3u) {
+			const uint8_t blink = (uint8_t)((gFlashLightBlinkCounter >> 6) & 1u);
+			if (s_was_rx || blink != s_triple_blink) {
+				s_triple_blink = blink;
+				gUpdateDisplay = true;
+			}
+		}
+		s_was_rx = rx;
+		return;
+	}
+
 	const bool tx = (gCurrentFunction == FUNCTION_TRANSMIT);
 	const bool rx = FUNCTION_IsRx();
 
@@ -1145,10 +1259,25 @@ void UI_DisplaySyrupHome(void)
 	/* page redraw always refreshes placeholder if shown */
 	s_placeholder_blit_done = false;
 
+	if (gEeprom.TRIPLE_WATCH) {
+		latch_triple_rx();
+		draw_channel_row(0);
+		draw_channel_row(1);
+		if (wave_overlay_active())
+			draw_wave_overlay();
+		else
+			draw_channel_row(2);
+		if (gEeprom.TX_VFO < 3u &&
+		    !(wave_overlay_active() && gEeprom.TX_VFO == 2u))
+			invert_channel_row(gEeprom.TX_VFO);
+		return;
+	}
+
 	draw_wave_row();
 	draw_channel_row(0);
 	draw_channel_row(1);
-	invert_channel_row(gEeprom.TX_VFO);
+	if (gEeprom.TX_VFO < 2u)
+		invert_channel_row(gEeprom.TX_VFO);
 
 	if (gCurrentFunction != FUNCTION_TRANSMIT &&
 	    !FUNCTION_IsRx() &&

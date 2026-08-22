@@ -251,7 +251,8 @@ const char* const gSubMenu_RXMode[] =
     "MAIN\nONLY",       // TX and RX on main only
     "DUAL RX\nRESPOND", // Watch both and respond
     "CROSS\nBAND",      // TX on main, RX on secondary
-    "MAIN TX\nDUAL RX"  // always TX on main, but RX on both
+    "MAIN TX\nDUAL RX", // always TX on main, but RX on both
+    "TRI\nWATCH"        // watch three channels
 };
 
 #ifdef ENABLE_VOICE
@@ -594,6 +595,15 @@ uint8_t UI_MENU_GetViewPos(uint8_t id)
     return gMenuCursor;
 }
 
+static bool UI_MENU_ItemHidden(uint8_t menu_id)
+{
+    if (gEeprom.TRIPLE_WATCH &&
+        (menu_id == MENU_F1SHRT || menu_id == MENU_F1LONG ||
+         menu_id == MENU_F2SHRT || menu_id == MENU_F2LONG))
+        return true;
+    return false;
+}
+
 #ifdef ENABLE_FEAT_F4HWN_MENU_CAT
 // --- Etape 2a : donnee du classement par categorie (cible Fusion) ---
 // Chaque liste = les menu_id d'une categorie, DANS l'ordre d'affichage voulu
@@ -710,15 +720,20 @@ uint8_t UI_MENU_CategoryItemCount(uint8_t cat)
         {
             if (!gF_LOCK && MenuList[i].menu_id == FIRST_HIDDEN_MENU_ITEM)
                 break;
+            if (UI_MENU_ItemHidden(MenuList[i].menu_id))
+                continue;
             n++;
         }
         return n;
     }
 
     const cat_list_t *cl = &CategoryLists[cat];
-    for (uint8_t k = 0; k < cl->len; k++)
+    for (uint8_t k = 0; k < cl->len; k++) {
+        if (UI_MENU_ItemHidden(cl->ids[k]))
+            continue;
         if (menu_find_idx(cl->ids[k]) != 0xFF)
             n++;
+    }
     return n;
 }
 
@@ -1483,7 +1498,10 @@ void UI_MENU_BuildView(void)
         const cat_list_t *cl = &CategoryLists[gMenuCategory];
         for (uint8_t k = 0; k < cl->len; k++)
         {
-            uint8_t idx = menu_find_idx(cl->ids[k]);
+            uint8_t idx;
+            if (UI_MENU_ItemHidden(cl->ids[k]))
+                continue;
+            idx = menu_find_idx(cl->ids[k]);
             if (idx != 0xFF)
                 gMenuIndices[gMenuListCount++] = idx;
         }
@@ -1495,6 +1513,9 @@ void UI_MENU_BuildView(void)
     {
         if (!gF_LOCK && MenuList[i].menu_id == FIRST_HIDDEN_MENU_ITEM)
             break;
+
+        if (UI_MENU_ItemHidden(MenuList[i].menu_id))
+            continue;
 
         gMenuIndices[gMenuListCount++] = i;
     }
