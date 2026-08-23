@@ -351,7 +351,6 @@ static void invert_channel_row(uint8_t vfo)
 
 static void draw_dtmf_live(uint8_t y, uint8_t x_right, const char *digits)
 {
-	static const char prefix[] = "DTMF:";
 	char buf[28];
 	size_t dig_off = 0;
 	const size_t dig_len = (digits != NULL) ? strlen(digits) : 0;
@@ -363,12 +362,12 @@ static void draw_dtmf_live(uint8_t y, uint8_t x_right, const char *digits)
 	avail = (uint8_t)(x_right - SH_GAP_PX - x_left);
 
 	while (dig_off < dig_len) {
-		snprintf(buf, sizeof(buf), "%s%s", prefix, digits + dig_off);
+		snprintf(buf, sizeof(buf), "DTMF:%s", digits + dig_off);
 		if (smallest_width(buf) <= avail)
 			break;
 		dig_off++;
 	}
-	snprintf(buf, sizeof(buf), "%s%s", prefix, digits + dig_off);
+	snprintf(buf, sizeof(buf), "DTMF:%s", digits + dig_off);
 	draw_smallest_abs(buf, x_left, y, true);
 }
 
@@ -470,12 +469,15 @@ static void draw_channel_row(uint8_t vfo)
 	const uint8_t param_y = (uint8_t)(top + SH_PARAM_Y_OFF);
 	const uint8_t tone_y = (uint8_t)(top + SH_TONE_Y_OFF);
 	const uint8_t freq_y = (uint8_t)(top + SH_FREQ_Y_OFF);
+	const bool tx_vfo = (vfo == gEeprom.TX_VFO);
 	const bool transmitting =
-		(gCurrentFunction == FUNCTION_TRANSMIT && gEeprom.TX_VFO == vfo);
+		(gCurrentFunction == FUNCTION_TRANSMIT && tx_vfo);
+	const bool show_dtmf_input = gDTMF_InputMode && tx_vfo;
 	const bool show_dtmf =
-		gSetting_live_DTMF_decoder &&
-		gDTMF_RX_live[0] != 0 &&
-		vfo == gDTMF_RX_live_vfo;
+		show_dtmf_input ||
+		(gSetting_live_DTMF_decoder &&
+		 gDTMF_RX_live[0] != 0 &&
+		 vfo == gDTMF_RX_live_vfo);
 
 	char String[22];
 	char rx_tone[12];
@@ -516,7 +518,7 @@ static void draw_channel_row(uint8_t vfo)
 	if (show_dtmf) {
 		draw_dtmf_live(param_y,
 		               (uint8_t)(LCD_WIDTH - SH_RIGHT_X_INSET - small_text_width(freq_str)),
-		               gDTMF_RX_live);
+		               show_dtmf_input ? gDTMF_InputBox : gDTMF_RX_live);
 	} else {
 		/* row 2: modulation, power, squelch */
 		x = 1u;

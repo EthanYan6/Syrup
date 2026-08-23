@@ -226,14 +226,10 @@ void DTMF_clear_input_box(void)
 
 void DTMF_Append(const char code)
 {
-    if (gDTMF_InputBox_Index == 0)
-    {
-        memset(gDTMF_InputBox, '-', sizeof(gDTMF_InputBox) - 1);
-        gDTMF_InputBox[sizeof(gDTMF_InputBox) - 1] = 0;
-    }
-
-    if (gDTMF_InputBox_Index < (sizeof(gDTMF_InputBox) - 1))
+    if (gDTMF_InputBox_Index < (sizeof(gDTMF_InputBox) - 1)) {
         gDTMF_InputBox[gDTMF_InputBox_Index++] = code;
+        gDTMF_InputBox[gDTMF_InputBox_Index] = 0;
+    }
 }
 
 #ifdef ENABLE_DTMF_CALLING
