@@ -11,7 +11,7 @@
  * Official Website:
  *     https://ethanyan6.github.io/Syrup/
  *
- * APRS map tab: browser geolocation + aprs.fi loc API (web-only).
+ * APRS map tab: nearby via APRS-IS (no API key); callsign lookup via aprs.fi.
  */
 (function () {
   'use strict';
@@ -526,6 +526,8 @@
       return;
     }
 
+    state.missingKey = false;
+
     var params = new URLSearchParams();
     if (name) {
       params.set('name', name.toUpperCase());
@@ -536,18 +538,23 @@
       params.set('radiusKm', String(currentRadiusKm()));
       state.lastQueryName = '';
     }
-    var key = currentApiKey();
+    /* Callsign lookup may need aprs.fi; nearby uses APRS-IS and must not. */
+    var key = name ? currentApiKey() : '';
     if (key) params.set('apikey', key);
 
     var endpoints = aprsEndpoints();
     var qi = params.toString();
+    var reqInit = { cache: 'no-store' };
+    if (key) {
+      reqInit.headers = fetchHeaders();
+    }
 
     state.fetching = true;
     setStatus('aprsStatusFetching');
 
     function tryAt(index) {
       if (index >= endpoints.length) {
-        if (state.missingKey) {
+        if (name && state.missingKey) {
           setStatus('aprsStatusNeedKey');
         } else {
           setStatus('aprsStatusError');
@@ -556,9 +563,7 @@
         return;
       }
       var base = endpoints[index];
-      fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + qi, {
-        cache: 'no-store'
-      })
+      fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + qi, reqInit)
         .then(function (res) {
           if (res.status === 429) {
             state.retryAfterMs = Date.now() + 30000;
@@ -567,7 +572,7 @@
           if (res.status === 503) {
             return res.json().then(function (data) {
               if (data && data.error === 'missing_apikey') {
-                state.missingKey = true;
+                if (name) state.missingKey = true;
                 throw new Error('missing_apikey');
               }
               throw new Error('try_next');
@@ -587,7 +592,7 @@
           return res.json().then(function (data) {
             if (data && data.error) {
               if (data.error === 'missing_apikey') {
-                state.missingKey = true;
+                if (name) state.missingKey = true;
                 throw new Error('missing_apikey');
               }
               throw new Error('try_next');
@@ -624,8 +629,7 @@
             return;
           }
           if (err && err.message === 'missing_apikey') {
-            setStatus('aprsStatusNeedKey');
-            state.fetching = false;
+            tryAt(index + 1);
             return;
           }
           if (err && (err.message === 'try_next' || err.message === 'Failed to fetch' ||

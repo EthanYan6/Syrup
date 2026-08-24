@@ -245,6 +245,32 @@ def _parse_uncompressed_pos(body: str):
     }
 
 
+def _decode_base91(s: str) -> int:
+    n = 0
+    for ch in s:
+        n = n * 91 + (ord(ch) - 33)
+    return n
+
+
+def _parse_compressed_pos(body: str):
+    if not body or len(body) < 13:
+        return None
+    table = body[0]
+    if table not in ("/", "\\"):
+        return None
+    ys, xs = body[1:5], body[5:9]
+    for ch in ys + xs:
+        o = ord(ch)
+        if o < 33 or o > 123:
+            return None
+    return {
+        "lat": 90.0 - _decode_base91(ys) / 380926.0,
+        "lon": -180.0 + _decode_base91(xs) / 190463.0,
+        "symbol": table + body[9],
+        "rest": body[13:],
+    }
+
+
 def _parse_aprs_info(info: str):
     if not info:
         return None
@@ -260,7 +286,8 @@ def _parse_aprs_info(info: str):
         return None
     if len(info) <= start:
         return None
-    return _parse_uncompressed_pos(info[start:])
+    body = info[start:]
+    return _parse_uncompressed_pos(body) or _parse_compressed_pos(body)
 
 
 def _parse_aprs_packet(line: str) -> dict | None:
@@ -305,15 +332,21 @@ def _parse_aprs_packet(line: str) -> dict | None:
     }
 
 
-def fetch_aprs_is_nearby(lat: float, lon: float, radius_km: float) -> dict:
+APRS_IS_HOSTS = (
+    ("china.aprs2.net", 14580),
+    ("rotate.aprs2.net", 14580),
+)
+
+
+def _fetch_aprs_is_one(host: str, port: int, lat: float, lon: float, radius_km: float) -> dict:
     filt = f"r/{lat:.4f}/{lon:.4f}/{int(round(radius_km))}"
     login = f"user BD1AHN-TS pass -1 vers SyrupAprs 1.0 filter {filt}\r\n"
-    sock = socket.create_connection(("rotate.aprs2.net", 14580), timeout=8)
+    sock = socket.create_connection((host, port), timeout=8)
     buf = b""
     try:
         sock.settimeout(1.0)
         sock.sendall(login.encode("ascii"))
-        deadline = time.time() + 5.0
+        deadline = time.time() + 8.0
         while time.time() < deadline:
             try:
                 chunk = sock.recv(4096)
@@ -334,6 +367,18 @@ def fetch_aprs_is_nearby(lat: float, lon: float, radius_km: float) -> dict:
         if st:
             seen[st["name"]] = st
     return {"source": "aprs-is", "stations": list(seen.values())}
+
+
+def fetch_aprs_is_nearby(lat: float, lon: float, radius_km: float) -> dict:
+    last_err: Exception | None = None
+    for host, port in APRS_IS_HOSTS:
+        try:
+            return _fetch_aprs_is_one(host, port, lat, lon, radius_km)
+        except OSError as exc:
+            last_err = exc
+    if last_err:
+        raise last_err
+    return {"source": "aprs-is", "stations": []}
 
 
 def fetch_aprs_fi(name: str, apikey: str = "") -> dict:

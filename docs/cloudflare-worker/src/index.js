@@ -331,10 +331,26 @@ function parseAprsPacket(line) {
   };
 }
 
-async function fetchAprsIsNearby(lat, lon, radiusKm) {
+const APRS_IS_HOSTS = ['rotate.aprs2.net', 'euro.aprs2.net'];
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise.finally(function () {
+      clearTimeout(timer);
+    }),
+    new Promise(function (_, reject) {
+      timer = setTimeout(function () {
+        reject(new Error(label || 'timeout'));
+      }, ms);
+    }),
+  ]);
+}
+
+async function fetchAprsIsFrom(host, lat, lon, radiusKm) {
   const filter = `r/${lat.toFixed(4)}/${lon.toFixed(4)}/${Math.round(radiusKm)}`;
   const login = `user BD1AHN-TS pass -1 vers SyrupAprs 1.0 filter ${filter}\r\n`;
-  const socket = connect({ hostname: 'rotate.aprs2.net', port: 14580 });
+  const socket = connect({ hostname: host, port: 14580 });
   const writer = socket.writable.getWriter();
   const reader = socket.readable.getReader();
   const encoder = new TextEncoder();
@@ -342,7 +358,7 @@ async function fetchAprsIsNearby(lat, lon, radiusKm) {
   try {
     await writer.write(encoder.encode(login));
     let buf = '';
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 6000;
     while (Date.now() < deadline) {
       const remain = deadline - Date.now();
       const result = await Promise.race([
@@ -373,6 +389,22 @@ async function fetchAprsIsNearby(lat, lon, radiusKm) {
       socket.close();
     } catch (e) {}
   }
+}
+
+async function fetchAprsIsNearby(lat, lon, radiusKm) {
+  let lastErr;
+  for (let i = 0; i < APRS_IS_HOSTS.length; i++) {
+    try {
+      return await withTimeout(
+        fetchAprsIsFrom(APRS_IS_HOSTS[i], lat, lon, radiusKm),
+        10000,
+        'aprs_is_timeout'
+      );
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('aprs_is_failed');
 }
 
 async function handleAprs(url, env, request) {
@@ -481,6 +513,7 @@ export default {
           ok: true,
           service: 'syrup-radar',
           paths: ['/api/aircraft', '/api/aprs'],
+          aprsNearby: 'aprs-is',
         });
       }
       return handleAircraft(url);
