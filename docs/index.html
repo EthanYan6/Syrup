@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260824range3">
+  <link rel="stylesheet" href="css/style.css?v=20260824keyhint">
   <script src="//cdn.busuanzi.cc/busuanzi/3.6.9/busuanzi.min.js" defer></script>
 </head>
 <body>
@@ -507,11 +507,6 @@
               </div>
             </div>
             <p class="radar-howto" id="aprsHowto" data-i18n="aprsHowto">① 手台正常开机 → ② 点「连接手台」→ ③ 点选台站（或点「推送到手台」）→ 机身打开 APRS 页（需后续固件支持）</p>
-            <div class="aprs-search-row">
-              <label class="aprs-key-label" for="aprsApiKeyInput" data-i18n="aprsApiKey">aprs.fi 密钥</label>
-              <input type="password" id="aprsApiKeyInput" maxlength="80" autocomplete="off" spellcheck="false" data-i18n-placeholder="aprsApiKeyPlaceholder" placeholder="在 aprs.fi 账户设置中申请">
-              <button type="button" class="btn-inline btn-secondary" id="aprsApiKeySaveBtn" data-i18n="aprsApiKeySave">保存</button>
-            </div>
             <div class="radar-coord-bar">
               <label class="radar-coord-field">
                 <span data-i18n="radarLat">纬度</span>
@@ -537,6 +532,12 @@
               </label>
               <button type="button" class="btn-inline btn-secondary" id="aprsCoordQueryBtn" data-i18n="radarQuery">查询</button>
               <button type="button" class="btn-inline btn-secondary" id="aprsUseMyLocationBtn" data-i18n="aprsMyLocation">重置定位</button>
+            </div>
+            <p class="aprs-key-hint" data-i18n="aprsApiKeyHint" data-i18n-html>如需呼号查询，请先在 <a href="https://aprs.fi/page/api" target="_blank" rel="noopener noreferrer">aprs.fi</a> 注册账号并申请 API key。</p>
+            <div class="aprs-search-row">
+              <label class="aprs-key-label" for="aprsApiKeyInput" data-i18n="aprsApiKey">aprs.fi 密钥</label>
+              <input type="password" id="aprsApiKeyInput" maxlength="80" autocomplete="off" spellcheck="false" data-i18n-placeholder="aprsApiKeyPlaceholder" placeholder="在 aprs.fi 账户设置中申请">
+              <button type="button" class="btn-inline btn-secondary" id="aprsApiKeySaveBtn" data-i18n="aprsApiKeySave">保存</button>
             </div>
             <div class="aprs-search-row">
               <input type="search" id="aprsSearch" maxlength="80" autocomplete="off" spellcheck="false" data-i18n-placeholder="aprsSearchPlaceholder" placeholder="查询呼号，多个用逗号分隔">
@@ -665,7 +666,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/min/lang.js?v=20260824resetloc"></script>
+  <script src="js/min/lang.js?v=20260824keyhint"></script>
   <script src="js/min/gb2312_codec.js?v=20260824obf"></script>
   <script src="js/min/flash.js?v=20260824aprs"></script>
   <script src="js/min/airline_icao.js?v=20260824obf"></script>

@@ -3084,12 +3084,24 @@ body.help-page {
 .aprs-stage {
   background: radial-gradient(circle at 50% 45%, #163246 0%, #081018 70%);
 }
+.aprs-key-hint {
+  margin: 4px 0 8px;
+  font-size: 0.72em;
+  line-height: 1.55;
+  color: var(--text-subtle);
+}
+.aprs-key-hint a {
+  color: var(--accent, #6bcf7a);
+}
 .aprs-search-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   align-items: center;
+}
+.aprs-search-row + .aprs-search-row {
+  margin-bottom: 12px;
 }
 .aprs-search-row input {
   flex: 1 1 180px;
