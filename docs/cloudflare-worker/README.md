@@ -1,6 +1,6 @@
 # Syrup Aircraft Radar — Cloudflare Worker
 
-GitHub Pages 是静态站，浏览器又无法直连 OpenSky / adsb.*（CORS），因此需要本 Worker 做同源外的 JSON 代理。
+GitHub Pages 是静态站，浏览器又无法直连 adsb.fi（CORS），因此需要本 Worker 做同源外的 JSON 代理。上游优先 adsb.fi，失败时回退 OpenSky / adsb.lol。
 
 ## Deploy
 

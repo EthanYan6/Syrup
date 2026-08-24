@@ -13,6 +13,8 @@ k5_eeprom.raw
 
 /build
 __pycache__/
+node_modules/
+docs/node_modules/
 
 .DS_Store
 AGENTS.md

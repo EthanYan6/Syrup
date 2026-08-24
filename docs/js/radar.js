@@ -11,7 +11,7 @@
  * Official Website:
  *     https://ethanyan6.github.io/Syrup/
  *
- * Aircraft radar tab: browser geolocation + OpenSky Network (web-only).
+ * Aircraft radar tab: browser geolocation + adsb.fi (web-only).
  */
 (function () {
   'use strict';

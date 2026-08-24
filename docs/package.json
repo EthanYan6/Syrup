@@ -1,0 +1,11 @@
+{
+  "name": "syrup-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "obfuscate": "node scripts/obfuscate-js.mjs"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1"
+  }
+}

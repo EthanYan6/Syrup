@@ -1,7 +1,7 @@
 /**
  * Syrup Aircraft Radar — Cloudflare Worker proxy
  *
- * GitHub Pages cannot run Python; browsers cannot call OpenSky / adsb.* due to CORS.
+ * GitHub Pages cannot run Python; browsers cannot call adsb.fi due to CORS.
  *
  * Deploy:
  *   cd docs/cloudflare-worker
@@ -12,7 +12,7 @@
 const UA =
   'Mozilla/5.0 (compatible; SyrupRadar/1.1; +https://ethanyan6.github.io/Syrup/)';
 
-/** Short cache to avoid hammering upstream (esp. adsb.lol 429). */
+/** Short cache to avoid hammering upstream (adsb.fi public limit is 1 req/s). */
 const cache = new Map();
 const CACHE_TTL_MS = 45000;
 
@@ -135,7 +135,7 @@ async function fetchAdsbLol(lat, lon, radiusKm) {
 
 async function fetchAdsbFi(lat, lon, radiusKm) {
   const radiusNm = Math.max(1, Math.min(250, Math.round(radiusKm / 1.852)));
-  const url = `https://opendata.adsb.fi/api/v2/lat/${lat.toFixed(5)}/lon/${lon.toFixed(5)}/dist/${radiusNm}`;
+  const url = `https://opendata.adsb.fi/api/v3/lat/${lat.toFixed(5)}/lon/${lon.toFixed(5)}/dist/${radiusNm}`;
   const res = await fetchUpstream(url, 15000);
   if (res.status === 403) throw new Error('adsbfi_http_403');
   if (res.status === 429) throw new Error('adsbfi_http_429');
@@ -160,7 +160,7 @@ function normalizeAdsbAc(data, source) {
       alt_m,
       velocity_ms,
       track: typeof ac.track === 'number' ? ac.track : null,
-      on_ground: !!ac.ground,
+      on_ground: !!ac.ground || alt === 'ground',
     });
   }
   return { source, aircraft };
@@ -184,9 +184,9 @@ async function handleAircraft(url) {
     return jsonResponse({ ...cached, cached: true });
   }
 
-  /* OpenSky first: usually works from Cloudflare; adsb.fi often 403's CF IPs. */
+  /* adsb.fi first; OpenSky/adsb.lol if fi 403's Cloudflare IPs. */
   const errors = [];
-  for (const fetcher of [fetchOpensky, fetchAdsbLol, fetchAdsbFi]) {
+  for (const fetcher of [fetchAdsbFi, fetchOpensky, fetchAdsbLol]) {
     try {
       const payload = await fetcher(lat, lon, radiusKm);
       setCached(key, payload);

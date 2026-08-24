@@ -421,7 +421,7 @@
           </section>
         </div>
 
-        <!-- AIRCRAFT RADAR (OpenSky, web-only) -->
+        <!-- AIRCRAFT RADAR (adsb.fi, web-only) -->
         <div class="tab-content" id="radar-content">
           <section class="section radar-panel">
             <div class="radar-toolbar">
@@ -462,7 +462,7 @@
             <div class="radar-list-wrap">
               <ul class="radar-list" id="radarList" aria-label="Aircraft list"></ul>
             </div>
-            <p class="radar-footnote" data-i18n="radarFootnote">数据来源：OpenSky / adsb.lol（ADS-B）。</p>
+            <p class="radar-footnote" data-i18n="radarFootnote" data-i18n-html>数据来源：<a href="https://adsb.fi/" target="_blank" rel="noopener noreferrer">adsb.fi</a>（ADS-B）。</p>
           </section>
         </div>
 
@@ -556,11 +556,11 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/lang.js?v=20260820radar9"></script>
-  <script src="js/gb2312_codec.js?v=20260722cnfix"></script>
-  <script src="js/flash.js?v=20260820radar9"></script>
-  <script src="js/airline_icao.js?v=20260820radar5"></script>
-  <script src="js/radar.js?v=20260820radar9"></script>
+  <script src="js/min/lang.js?v=20260824obf"></script>
+  <script src="js/min/gb2312_codec.js?v=20260824obf"></script>
+  <script src="js/min/flash.js?v=20260824obf"></script>
+  <script src="js/min/airline_icao.js?v=20260824obf"></script>
+  <script src="js/min/radar.js?v=20260824obf"></script>
   <script>
   (function() {
     var coffeeBtn = document.getElementById('coffeeBtn');

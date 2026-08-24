@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """Local static + ADS-B proxy for Syrup docs site.
 
-OpenSky / adsb.lol block cross-origin browser calls. This server serves
-docs/ and proxies /api/aircraft so the radar tab works on localhost.
+adsb.fi (and other ADS-B APIs) block cross-origin browser calls. This
+server serves docs/ and proxies /api/aircraft so the radar tab works
+on localhost. Upstream preference: adsb.fi, then adsb.lol, then OpenSky.
 
 Usage (from repo root or docs/):
   python docs/serve.py
@@ -94,13 +95,7 @@ def fetch_opensky(lat: float, lon: float, radius_km: float) -> dict:
     return {"source": "opensky", "aircraft": aircraft}
 
 
-def fetch_adsblol(lat: float, lon: float, radius_km: float) -> dict:
-    radius_nm = max(1, min(250, int(round(radius_km / 1.852))))
-    url = f"https://api.adsb.lol/v2/lat/{lat:.5f}/lon/{lon:.5f}/dist/{radius_nm}"
-    code, body, _ = fetch_url(url)
-    if code != 200:
-        raise RuntimeError(f"adsblol_http_{code}")
-    data = json.loads(body.decode("utf-8", errors="replace"))
+def normalize_adsb_ac(data: dict, source: str) -> dict:
     aircraft = []
     for ac in data.get("ac") or []:
         if ac.get("lat") is None or ac.get("lon") is None:
@@ -116,20 +111,47 @@ def fetch_adsblol(lat: float, lon: float, radius_km: float) -> dict:
         vel = None
         if isinstance(gs_kt, (int, float)):
             vel = float(gs_kt) / 1.94384
-        flight = str(ac.get("flight") or "").strip()
         aircraft.append(
             {
                 "icao": str(ac.get("hex") or "").strip(),
-                "callsign": flight,
+                "callsign": str(ac.get("flight") or "").strip(),
                 "lat": ac["lat"],
                 "lon": ac["lon"],
                 "alt_m": alt_m,
                 "velocity_ms": vel,
                 "track": ac.get("track") if isinstance(ac.get("track"), (int, float)) else None,
-                "on_ground": bool(ac.get("ground")),
+                "on_ground": bool(ac.get("ground")) or alt == "ground",
             }
         )
-    return {"source": "adsb.lol", "aircraft": aircraft}
+    return {"source": source, "aircraft": aircraft}
+
+
+def _radius_nm(radius_km: float) -> int:
+    return max(1, min(250, int(round(radius_km / 1.852))))
+
+
+def fetch_adsbfi(lat: float, lon: float, radius_km: float) -> dict:
+    url = (
+        f"https://opendata.adsb.fi/api/v3/lat/{lat:.5f}/lon/{lon:.5f}"
+        f"/dist/{_radius_nm(radius_km)}"
+    )
+    code, body, _ = fetch_url(url)
+    if code != 200:
+        raise RuntimeError(f"adsbfi_http_{code}")
+    data = json.loads(body.decode("utf-8", errors="replace"))
+    return normalize_adsb_ac(data, "adsb.fi")
+
+
+def fetch_adsblol(lat: float, lon: float, radius_km: float) -> dict:
+    url = (
+        f"https://api.adsb.lol/v2/lat/{lat:.5f}/lon/{lon:.5f}"
+        f"/dist/{_radius_nm(radius_km)}"
+    )
+    code, body, _ = fetch_url(url)
+    if code != 200:
+        raise RuntimeError(f"adsblol_http_{code}")
+    data = json.loads(body.decode("utf-8", errors="replace"))
+    return normalize_adsb_ac(data, "adsb.lol")
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -172,7 +194,7 @@ class Handler(SimpleHTTPRequestHandler):
         radius_km = max(5.0, min(250.0, radius_km))
 
         errors = []
-        for fetcher in (fetch_opensky, fetch_adsblol):
+        for fetcher in (fetch_adsbfi, fetch_adsblol, fetch_opensky):
             try:
                 payload = fetcher(lat, lon, radius_km)
                 self.send_json(200, payload)
