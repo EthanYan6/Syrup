@@ -11,12 +11,14 @@
 
 const UA =
   'Mozilla/5.0 (compatible; SyrupRadar/1.1; +https://ethanyan6.github.io/Syrup/)';
+const APRS_UA =
+  'Mozilla/5.0 (compatible; SyrupAprs/1.0; +https://ethanyan6.github.io/Syrup/)';
 
 /** Short cache to avoid hammering upstream (adsb.fi public limit is 1 req/s). */
 const cache = new Map();
 const CACHE_TTL_MS = 45000;
 
-async function fetchUpstream(url, timeoutMs = 18000) {
+async function fetchUpstream(url, timeoutMs = 18000, userAgent = UA) {
   const ctrl = new AbortController();
   const timer = setTimeout(function () {
     ctrl.abort();
@@ -25,7 +27,7 @@ async function fetchUpstream(url, timeoutMs = 18000) {
     return await fetch(url, {
       signal: ctrl.signal,
       headers: {
-        'User-Agent': UA,
+        'User-Agent': userAgent,
         Accept: 'application/json',
         'Accept-Language': 'en-US,en;q=0.9',
       },
@@ -40,7 +42,7 @@ function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-APRS-ApiKey',
     'Cache-Control': 'no-store',
   };
 }
@@ -198,8 +200,118 @@ async function handleAircraft(url) {
   return jsonResponse({ error: 'upstream_failed', detail: errors }, 502);
 }
 
+function toNum(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeAprs(data) {
+  const stations = [];
+  for (const row of data.entries || []) {
+    if (!row) continue;
+    if (String(row.type || '') === 'a') continue;
+    const lat = toNum(row.lat);
+    const lon = toNum(row.lng);
+    if (lat == null || lon == null) continue;
+    const name = String(row.name || row.srccall || '').trim();
+    if (!name) continue;
+    stations.push({
+      name,
+      srccall: String(row.srccall || '').trim(),
+      type: String(row.type || 'l'),
+      lat,
+      lon,
+      comment: String(row.comment || ''),
+      speed_kmh: toNum(row.speed),
+      course: toNum(row.course),
+      altitude_m: toNum(row.altitude),
+      lasttime: toNum(row.lasttime) != null ? Math.round(toNum(row.lasttime)) : null,
+      symbol: String(row.symbol || ''),
+      path: String(row.path || ''),
+      phg: String(row.phg || ''),
+    });
+  }
+  return { source: 'aprs.fi', stations };
+}
+
+async function handleAprs(url, env, request) {
+  const name = String(url.searchParams.get('name') || '').trim();
+  const lat = parseFloat(url.searchParams.get('lat') || '');
+  const lon = parseFloat(url.searchParams.get('lon') || '');
+  let radiusKm = parseFloat(url.searchParams.get('radiusKm') || '80');
+  const hasLat = Number.isFinite(lat);
+  const hasLon = Number.isFinite(lon);
+  if (hasLat !== hasLon) {
+    return jsonResponse({ error: 'invalid_params' }, 400);
+  }
+  if (hasLat && (lat < -90 || lat > 90 || lon < -180 || lon > 180)) {
+    return jsonResponse({ error: 'invalid_coords' }, 400);
+  }
+  if (!name && !hasLat) {
+    return jsonResponse({ error: 'invalid_params' }, 400);
+  }
+  radiusKm = Math.max(5, Math.min(250, Number.isFinite(radiusKm) ? radiusKm : 80));
+
+  const headerKey = request
+    ? String(request.headers.get('X-APRS-ApiKey') || '').trim()
+    : '';
+  const apikey = headerKey || String((env && env.APRSFI_APIKEY) || '').trim();
+  if (!apikey) {
+    return jsonResponse({ error: 'missing_apikey' }, 503);
+  }
+
+  const cacheName = name || '';
+  const key = cacheName
+    ? `n:${cacheName.toUpperCase()}`
+    : cacheKey(lat, lon, radiusKm);
+  const cached = getCached(`aprs:${key}`);
+  if (cached) {
+    return jsonResponse({ ...cached, cached: true });
+  }
+
+  const params = new URLSearchParams({
+    what: 'loc',
+    apikey,
+    format: 'json',
+  });
+  if (name) params.set('name', name);
+  if (hasLat) {
+    params.set('lat', lat.toFixed(5));
+    params.set('lng', lon.toFixed(5));
+    params.set('distance', String(Math.round(radiusKm)));
+  }
+
+  try {
+    const res = await fetchUpstream(
+      `https://api.aprs.fi/api/get?${params}`,
+      22000,
+      APRS_UA
+    );
+    if (res.status === 429) {
+      return jsonResponse({ error: 'rate_limited' }, 429);
+    }
+    if (!res.ok) {
+      return jsonResponse({ error: 'upstream_failed', detail: [`aprsfi_http_${res.status}`] }, 502);
+    }
+    const data = await res.json();
+    if (!data || data.result !== 'ok') {
+      const desc = String((data && (data.description || data.result)) || 'fail');
+      return jsonResponse({ error: 'upstream_failed', detail: [`aprsfi_${desc}`] }, 502);
+    }
+    const payload = normalizeAprs(data);
+    setCached(`aprs:${key}`, payload);
+    return jsonResponse(payload);
+  } catch (e) {
+    return jsonResponse(
+      { error: 'upstream_failed', detail: [String(e && e.message ? e.message : e)] },
+      502
+    );
+  }
+}
+
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders() });
     }
@@ -207,9 +319,16 @@ export default {
       return jsonResponse({ error: 'method_not_allowed' }, 405);
     }
     const url = new URL(request.url);
+    if (url.pathname === '/api/aprs') {
+      return handleAprs(url, env, request);
+    }
     if (url.pathname === '/api/aircraft' || url.pathname === '/') {
-      if (url.pathname === '/' && !url.searchParams.has('lat')) {
-        return jsonResponse({ ok: true, service: 'syrup-radar', path: '/api/aircraft' });
+      if (url.pathname === '/' && !url.searchParams.has('lat') && !url.searchParams.has('name')) {
+        return jsonResponse({
+          ok: true,
+          service: 'syrup-radar',
+          paths: ['/api/aircraft', '/api/aprs'],
+        });
       }
       return handleAircraft(url);
     }

@@ -16,7 +16,6 @@
 (function () {
   'use strict';
 
-  var RADIUS_KM = 80;
   var POLL_MS = 10000;
   /**
    * Aircraft JSON endpoints (tried in order).
@@ -24,7 +23,7 @@
    * 2) Optional override: window.SYRUP_AIRCRAFT_API
    * 3) Cloudflare Worker (for GitHub Pages; deploy docs/cloudflare-worker)
    */
-  var DEFAULT_REMOTE_AIRCRAFT_API = 'https://syrup-radar.heady-iron.workers.dev/api/aircraft';
+  var DEFAULT_REMOTE_AIRCRAFT_API = 'https://syrup-radar.ethanyan6.workers.dev/api/aircraft';
 
   function aircraftEndpoints() {
     var list = ['/api/aircraft'];
@@ -48,11 +47,38 @@
     lastAnimTs: 0,
     fetching: false,
     retryAfterMs: 0,
-    geoAsked: false
+    geoAsked: false,
+    manualOverride: false
   };
 
   function $(id) {
     return document.getElementById(id);
+  }
+
+  var RADIUS_STORAGE_KEY = 'syrup-radar-radius-km';
+
+  function currentRadiusKm() {
+    var el = $('radarRadiusInput');
+    var n = parseFloat(el && el.value);
+    if (!isFinite(n)) return 80;
+    return Math.max(5, Math.min(250, n));
+  }
+
+  function restoreRadius(el) {
+    if (!el) return;
+    try {
+      var saved = localStorage.getItem(RADIUS_STORAGE_KEY);
+      if (!saved) return;
+      if (el.querySelector('option[value="' + saved + '"]')) {
+        el.value = saved;
+      }
+    } catch (e) {}
+  }
+
+  function persistRadius(km) {
+    try {
+      localStorage.setItem(RADIUS_STORAGE_KEY, String(km));
+    } catch (e) {}
   }
 
   function tr(key, params) {
@@ -164,6 +190,32 @@
     };
   }
 
+  function aircraftIcao(ac) {
+    return String((ac && ac.icao) || '').trim().toUpperCase() || '—';
+  }
+
+  /** When callsign/flight/airline cannot be parsed, show Mode-S ICAO. */
+  function flightDisplay(ac) {
+    var flight = parseFlightInfo(ac && ac.callsign);
+    var icao = aircraftIcao(ac);
+    var parsed = !!(flight && flight.flightId);
+    var airlineText = icao;
+    if (parsed) {
+      if (flight.known && flight.airlineName && flight.airlineName !== flight.airlineCode) {
+        airlineText = flight.airlineName + ' (' + flight.airlineCode + ')';
+      } else {
+        airlineText = flight.airlineCode || icao;
+      }
+    }
+    return {
+      flight: flight,
+      label: parsed ? flight.flightId : icao,
+      callsign: parsed ? (flight.callsign || ac.callsign || icao) : icao,
+      flightText: parsed ? flight.flightId : icao,
+      airlineText: airlineText
+    };
+  }
+
   function selectAircraft(icao, opts) {
     state.selectedIcao = icao || null;
     var empty = $('radarDetailEmpty');
@@ -185,18 +237,12 @@
     }
     if (empty) empty.hidden = true;
     if (fields) fields.hidden = false;
-    var flight = parseFlightInfo(ac.callsign);
-    var flightText = flight.flightId || tr('radarFlightUnknown');
-    var airlineText = '—';
-    if (flight.airlineCode) {
-      airlineText = flight.known
-        ? (flight.airlineName + ' (' + flight.airlineCode + ')')
-        : (tr('radarAirlineUnknown') + ' (' + flight.airlineCode + ')');
-    }
+    var shown = flightDisplay(ac);
+    var flight = shown.flight;
     var map = {
-      radarFieldCallsign: ac.callsign || '—',
-      radarFieldFlight: flightText,
-      radarFieldAirline: airlineText,
+      radarFieldCallsign: shown.callsign,
+      radarFieldFlight: shown.flightText,
+      radarFieldAirline: shown.airlineText,
       radarFieldIcao: ac.icao || '—',
       radarFieldAlt: formatAlt(ac.alt),
       radarFieldSpeed: formatSpeed(ac.velocity),
@@ -241,7 +287,7 @@
       updateSerialButtons();
       return;
     }
-    var label = (flight && flight.flightId) || (ac && ac.callsign) || (ac && ac.icao) || '';
+    var label = (flight && flight.flightId) || (ac && ac.icao) || '';
     var altM = (ac && typeof ac.alt === 'number' && isFinite(ac.alt)) ? Math.round(ac.alt) : -2147483648;
     var distM = (ac && typeof ac.distanceKm === 'number' && isFinite(ac.distanceKm))
       ? Math.min(65534, Math.round(ac.distanceKm * 1000))
@@ -276,11 +322,11 @@
       li.setAttribute('role', 'button');
       li.tabIndex = 0;
       li.dataset.icao = ac.icao;
-      var flight = parseFlightInfo(ac.callsign);
-      var label = flight.flightId || ac.callsign || ac.icao;
+      var shown = flightDisplay(ac);
+      var label = shown.label;
       var metaBits = [formatDist(ac.distanceKm), formatTrack(ac.bearing)];
-      if (flight.known && flight.airlineName) {
-        metaBits.unshift(flight.airlineName);
+      if (shown.flight.known && shown.flight.airlineName && shown.flight.airlineName !== shown.flight.airlineCode) {
+        metaBits.unshift(shown.flight.airlineName);
       }
       li.innerHTML =
         '<span class="radar-list-call">' + escapeHtml(label) + '</span>' +
@@ -326,7 +372,7 @@
       var velocity = row.velocity_ms;
       var track = row.track;
       var dist = distanceKm(state.userLat, state.userLon, lat, lon);
-      if (dist > RADIUS_KM * 1.05) return;
+      if (dist > currentRadiusKm() * 1.05) return;
       out.push({
         icao: icao,
         callsign: callsign,
@@ -357,7 +403,7 @@
     var params = new URLSearchParams({
       lat: String(state.userLat),
       lon: String(state.userLon),
-      radiusKm: String(RADIUS_KM)
+      radiusKm: String(currentRadiusKm())
     });
     var endpoints = aircraftEndpoints();
     var qi = params.toString();
@@ -446,7 +492,43 @@
     state.pollTimer = setInterval(fetchAircraft, POLL_MS);
   }
 
-  function requestGeoThenStart() {
+  function fillCoordInputs() {
+    var latEl = $('radarLatInput');
+    var lonEl = $('radarLonInput');
+    if (latEl && state.userLat != null && isFinite(state.userLat)) {
+      latEl.value = Number(state.userLat).toFixed(4);
+    }
+    if (lonEl && state.userLon != null && isFinite(state.userLon)) {
+      lonEl.value = Number(state.userLon).toFixed(4);
+    }
+  }
+
+  function applyManualCoords() {
+    var latEl = $('radarLatInput');
+    var lonEl = $('radarLonInput');
+    var lat = parseFloat(latEl && latEl.value);
+    var lon = parseFloat(lonEl && lonEl.value);
+    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      setStatus('radarStatusBadCoords');
+      return;
+    }
+    state.manualOverride = true;
+    state.userLat = lat;
+    state.userLon = lon;
+    state.retryAfterMs = 0;
+    fillCoordInputs();
+    if (!state.active) {
+      state.active = true;
+      startAnim();
+    }
+    if (state.paused) {
+      setPaused(false);
+    } else {
+      startPoll();
+    }
+  }
+
+  function requestGeoThenStart(force) {
     if (!navigator.geolocation) {
       setStatus('radarStatusNoGeo');
       return;
@@ -455,15 +537,28 @@
     state.geoAsked = true;
     navigator.geolocation.getCurrentPosition(
       function (pos) {
+        if (state.manualOverride && !force) return;
+        if (force) state.manualOverride = false;
         state.userLat = pos.coords.latitude;
         state.userLon = pos.coords.longitude;
+        state.retryAfterMs = 0;
+        fillCoordInputs();
         setStatus('radarStatusFetching');
-        startPoll();
+        if (!state.active) {
+          state.active = true;
+          startAnim();
+        }
+        if (state.paused) {
+          setPaused(false);
+        } else {
+          startPoll();
+        }
       },
       function () {
+        if (state.manualOverride && !force) return;
         setStatus('radarStatusGeoDenied');
       },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: force ? 0 : 60000 }
     );
   }
 
@@ -534,9 +629,9 @@
     ctx.fillStyle = 'rgba(180, 240, 190, 0.55)';
     ctx.font = '11px Nunito, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(Math.round(RADIUS_KM / 3) + ' km', cx + 4, cy - r * 0.33 + 4);
-    ctx.fillText(Math.round((RADIUS_KM * 2) / 3) + ' km', cx + 4, cy - r * 0.66 + 4);
-    ctx.fillText(RADIUS_KM + ' km', cx + 4, cy - r + 12);
+    ctx.fillText(Math.round(currentRadiusKm() / 3) + ' km', cx + 4, cy - r * 0.33 + 4);
+    ctx.fillText(Math.round((currentRadiusKm() * 2) / 3) + ' km', cx + 4, cy - r * 0.66 + 4);
+    ctx.fillText(currentRadiusKm() + ' km', cx + 4, cy - r + 12);
 
     // Sweep wedge
     var ang = toRad(state.sweepAngle - 90);
@@ -568,7 +663,7 @@
 
     // Aircraft
     state.aircraft.forEach(function (ac) {
-      var frac = Math.min(1, ac.distanceKm / RADIUS_KM);
+      var frac = Math.min(1, ac.distanceKm / currentRadiusKm());
       var brg = toRad(ac.bearing - 90);
       var px = cx + Math.cos(brg) * r * frac;
       var py = cy + Math.sin(brg) * r * frac;
@@ -582,7 +677,7 @@
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-      var label = ac.callsign || ac.icao;
+      var label = flightDisplay(ac).label;
       if (label && (selected || state.aircraft.length < 25)) {
         ctx.fillStyle = 'rgba(220, 255, 220, 0.85)';
         ctx.font = '10px Nunito, sans-serif';
@@ -628,6 +723,7 @@
   function activate() {
     state.active = true;
     startAnim();
+    fillCoordInputs();
     if (state.userLat == null) {
       requestGeoThenStart();
     } else if (!state.paused) {
@@ -666,7 +762,7 @@
     var best = null;
     var bestD = 14;
     state.aircraft.forEach(function (ac) {
-      var frac = Math.min(1, ac.distanceKm / RADIUS_KM);
+      var frac = Math.min(1, ac.distanceKm / currentRadiusKm());
       var brg = toRad(ac.bearing - 90);
       var px = cx + Math.cos(brg) * r * frac;
       var py = cy + Math.sin(brg) * r * frac;
@@ -687,6 +783,11 @@
     var connectBtn = $('radarConnectBtn');
     var pushBtn = $('radarPushBtn');
     var canvas = $('radarCanvas');
+    var queryBtn = $('radarQueryBtn');
+    var myLocBtn = $('radarUseMyLocationBtn');
+    var radiusSelect = $('radarRadiusInput');
+    var latInput = $('radarLatInput');
+    var lonInput = $('radarLonInput');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', function () {
         if (!state.active) return;
@@ -744,6 +845,39 @@
     if (canvas) {
       canvas.addEventListener('click', hitTestCanvas);
     }
+    if (queryBtn) {
+      queryBtn.addEventListener('click', applyManualCoords);
+    }
+    if (myLocBtn) {
+      myLocBtn.addEventListener('click', function () {
+        requestGeoThenStart(true);
+      });
+    }
+    restoreRadius(radiusSelect);
+    if (radiusSelect) {
+      radiusSelect.addEventListener('change', function () {
+        var n = currentRadiusKm();
+        radiusSelect.value = String(n);
+        persistRadius(n);
+        if (!state.active) return;
+        state.retryAfterMs = 0;
+        if (state.userLat == null) return;
+        if (state.paused) {
+          setPaused(false);
+        } else {
+          startPoll();
+        }
+      });
+    }
+    function onCoordEnter(ev) {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        applyManualCoords();
+      }
+    }
+    if (latInput) latInput.addEventListener('keydown', onCoordEnter);
+    if (lonInput) lonInput.addEventListener('keydown', onCoordEnter);
+    if (radiusSelect) radiusSelect.addEventListener('keydown', onCoordEnter);
 
     document.querySelectorAll('.tab').forEach(function (tab) {
       tab.addEventListener('click', function () {

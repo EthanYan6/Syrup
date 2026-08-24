@@ -625,7 +625,7 @@ async function sendMessage(msg) {
   await writer.write(makePacket(msg));
 }
 
-/** Shared by radar tab: connect + push selected aircraft to the radio LCD. */
+/** Shared by radar / APRS tabs: connect + push selected target to the radio LCD. */
 window.SyrupSerial = {
   isConnected: function () {
     return !!(port && writer);
@@ -664,6 +664,43 @@ window.SyrupSerial = {
     v.setUint32(18, freq, true);
     let flags = 0;
     if (target && target.listen) flags |= 1;
+    if (target && target.openPage) flags |= 2;
+    msg[22] = flags;
+    await sendMessage(msg);
+  },
+  /**
+   * Firmware later. Same layout as aircraft, command 0x0542 (0x0541 is aircraft ACK).
+   * @param {{callsign:string, altitudeM:number, distanceM:number, course?:number, speedKmh?:number, openPage?:boolean}} target
+   */
+  pushAprs: async function (target) {
+    if (!writer) {
+      throw new Error('not_connected');
+    }
+    const MSG_APRS = 0x0542;
+    const msg = createMessage(MSG_APRS, 19);
+    const v = new DataView(msg.buffer);
+    const cs = String((target && target.callsign) || '').toUpperCase().replace(/[^A-Z0-9\-]/g, '').slice(0, 9);
+    for (let i = 0; i < 8; i++) {
+      msg[4 + i] = i < cs.length ? cs.charCodeAt(i) : 0;
+    }
+    let alt = (target && typeof target.altitudeM === 'number' && isFinite(target.altitudeM))
+      ? Math.round(target.altitudeM)
+      : -2147483648;
+    v.setInt32(12, alt, true);
+    let dist = 0xFFFF;
+    if (target && typeof target.distanceM === 'number' && isFinite(target.distanceM) && target.distanceM >= 0) {
+      dist = Math.min(0xFFFE, Math.round(target.distanceM));
+    }
+    v.setUint16(16, dist, true);
+    let extra = 0;
+    if (target && typeof target.course === 'number' && isFinite(target.course) && target.course >= 0) {
+      extra |= (Math.round(target.course) % 360) & 0x1FF;
+    }
+    if (target && typeof target.speedKmh === 'number' && isFinite(target.speedKmh) && target.speedKmh >= 0) {
+      extra |= (Math.min(0x7FFFF, Math.round(target.speedKmh)) << 9);
+    }
+    v.setUint32(18, extra >>> 0, true);
+    let flags = 0;
     if (target && target.openPage) flags |= 2;
     msg[22] = flags;
     await sendMessage(msg);

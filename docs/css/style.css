@@ -3006,6 +3006,47 @@ body.help-page {
   color: var(--text-muted);
   line-height: 1.45;
 }
+.radar-coord-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+.radar-coord-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.radar-coord-field input,
+.radar-coord-field select {
+  width: 10em;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.95em;
+  font-weight: 500;
+}
+.radar-coord-field select,
+.radar-coord-field .radar-radius-input {
+  width: 7.5em;
+}
+.radar-coord-field input:focus,
+.radar-coord-field select:focus {
+  outline: none;
+  border-color: var(--accent, #6bcf7a);
+}
+.radar-coverage-hint {
+  margin: 0 0 12px;
+  font-size: 0.72em;
+  line-height: 1.55;
+  color: var(--text-subtle);
+}
 .radar-meta {
   font-size: 0.82em;
   color: var(--text-muted);
@@ -3031,13 +3072,46 @@ body.help-page {
   padding: 12px;
   min-height: 300px;
 }
-#radarCanvas {
+#radarCanvas,
+#aprsCanvas {
   width: min(100%, 420px);
   height: auto;
   max-width: 420px;
   display: block;
   cursor: crosshair;
   border-radius: 50%;
+}
+.aprs-stage {
+  background: radial-gradient(circle at 50% 45%, #163246 0%, #081018 70%);
+}
+.aprs-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  align-items: center;
+}
+.aprs-search-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.aprs-search-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.aprs-key-label {
+  flex: 0 0 auto;
+  font-size: 0.78em;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 .radar-detail {
   background: var(--bg-elevated);

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Local static + ADS-B proxy for Syrup docs site.
+"""Local static + ADS-B / APRS proxy for Syrup docs site.
 
-adsb.fi (and other ADS-B APIs) block cross-origin browser calls. This
-server serves docs/ and proxies /api/aircraft so the radar tab works
-on localhost. Upstream preference: adsb.fi, then adsb.lol, then OpenSky.
+adsb.fi and api.aprs.fi block cross-origin browser calls. This server
+serves docs/ and proxies:
+  /api/aircraft  — ADS-B (adsb.fi, then adsb.lol, then OpenSky)
+  /api/aprs      — aprs.fi loc API (needs APRSFI_APIKEY)
 
 Usage (from repo root or docs/):
-  python docs/serve.py
+    python docs/serve.py
   # then open http://127.0.0.1:5500/
 """
 
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,6 +27,7 @@ HOST = "127.0.0.1"
 PORT = 5500
 DOCS_DIR = Path(__file__).resolve().parent
 UA = "SyrupRadarLocal/1.0 (+https://ethanyan6.github.io/Syrup/)"
+APRS_UA = "SyrupAprsLocal/1.0 (+https://ethanyan6.github.io/Syrup/)"
 
 
 def km_to_lat_delta(km: float) -> float:
@@ -38,11 +41,21 @@ def km_to_lon_delta(km: float, lat: float) -> float:
     return km / (111.32 * cos)
 
 
-def fetch_url(url: str, timeout: float = 20.0) -> tuple[int, bytes, str]:
+def _aprs_api_key() -> str:
+    key = (os.environ.get("APRSFI_APIKEY") or os.environ.get("APRS_FI_APIKEY") or "").strip()
+    if key:
+        return key
+    key_file = DOCS_DIR / ".aprs-apikey"
+    if key_file.is_file():
+        return key_file.read_text(encoding="utf-8").strip().splitlines()[0].strip()
+    return ""
+
+
+def fetch_url(url: str, timeout: float = 20.0, user_agent: str | None = None) -> tuple[int, bytes, str]:
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": UA,
+            "User-Agent": user_agent or UA,
             "Accept": "application/json",
         },
         method="GET",
@@ -154,6 +167,91 @@ def fetch_adsblol(lat: float, lon: float, radius_km: float) -> dict:
     return normalize_adsb_ac(data, "adsb.lol")
 
 
+def _to_float(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_int(value):
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_aprs(data: dict) -> dict:
+    stations = []
+    for row in data.get("entries") or []:
+        if not row:
+            continue
+        # Skip AIS; this tab is APRS.
+        if str(row.get("type") or "") == "a":
+            continue
+        lat = _to_float(row.get("lat"))
+        lon = _to_float(row.get("lng"))
+        if lat is None or lon is None:
+            continue
+        name = str(row.get("name") or row.get("srccall") or "").strip()
+        if not name:
+            continue
+        stations.append(
+            {
+                "name": name,
+                "srccall": str(row.get("srccall") or "").strip(),
+                "type": str(row.get("type") or "l"),
+                "lat": lat,
+                "lon": lon,
+                "comment": str(row.get("comment") or ""),
+                "speed_kmh": _to_float(row.get("speed")),
+                "course": _to_float(row.get("course")),
+                "altitude_m": _to_float(row.get("altitude")),
+                "lasttime": _to_int(row.get("lasttime")),
+                "symbol": str(row.get("symbol") or ""),
+                "path": str(row.get("path") or ""),
+                "phg": str(row.get("phg") or ""),
+            }
+        )
+    return {"source": "aprs.fi", "stations": stations}
+
+
+def fetch_aprs_fi(
+    name: str, lat: float | None, lon: float | None, radius_km: float, apikey: str = ""
+) -> dict:
+    apikey = (apikey or _aprs_api_key()).strip()
+    if not apikey:
+        raise RuntimeError("missing_apikey")
+    params = {
+        "what": "loc",
+        "apikey": apikey,
+        "format": "json",
+    }
+    if name:
+        params["name"] = name
+    if lat is not None and lon is not None:
+        params["lat"] = f"{lat:.5f}"
+        params["lng"] = f"{lon:.5f}"
+        params["distance"] = str(int(round(radius_km)))
+    url = "https://api.aprs.fi/api/get?" + urllib.parse.urlencode(params)
+    code, body, _ = fetch_url(url, timeout=22.0, user_agent=APRS_UA)
+    if code == 429:
+        raise RuntimeError("aprsfi_http_429")
+    if code != 200:
+        raise RuntimeError(f"aprsfi_http_{code}")
+    data = json.loads(body.decode("utf-8", errors="replace"))
+    if not isinstance(data, dict):
+        raise RuntimeError("aprsfi_bad_json")
+    if str(data.get("result") or "") != "ok":
+        desc = str(data.get("description") or data.get("result") or "fail")
+        raise RuntimeError(f"aprsfi_{desc}")
+    return normalize_aprs(data)
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(DOCS_DIR), **kwargs)
@@ -167,7 +265,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-APRS-ApiKey")
             self.end_headers()
             return
         self.send_error(404)
@@ -176,6 +274,9 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/aircraft":
             self.handle_aircraft(parsed.query)
+            return
+        if parsed.path == "/api/aprs":
+            self.handle_aprs(parsed.query)
             return
         return super().do_GET()
 
@@ -204,6 +305,51 @@ class Handler(SimpleHTTPRequestHandler):
 
         self.send_json(502, {"error": "upstream_failed", "detail": errors})
 
+    def handle_aprs(self, query: str):
+        qs = urllib.parse.parse_qs(query)
+        name = (qs.get("name", [""])[0] or "").strip()
+        lat_raw = (qs.get("lat", [""])[0] or "").strip()
+        lon_raw = (qs.get("lon", [""])[0] or "").strip()
+        lat = lon = None
+        try:
+            if lat_raw:
+                lat = float(lat_raw)
+            if lon_raw:
+                lon = float(lon_raw)
+            radius_km = float(qs.get("radiusKm", ["80"])[0])
+        except (TypeError, ValueError):
+            self.send_json(400, {"error": "invalid_params"})
+            return
+        if (lat is None) != (lon is None):
+            self.send_json(400, {"error": "invalid_params"})
+            return
+        if lat is not None and not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            self.send_json(400, {"error": "invalid_coords"})
+            return
+        if not name and lat is None:
+            self.send_json(400, {"error": "invalid_params"})
+            return
+        radius_km = max(5.0, min(250.0, radius_km))
+        client_key = (
+            self.headers.get("X-APRS-ApiKey")
+            or self.headers.get("x-aprs-apikey")
+            or ""
+        ).strip()
+        try:
+            payload = fetch_aprs_fi(name, lat, lon, radius_km, apikey=client_key)
+            self.send_json(200, payload)
+        except RuntimeError as exc:
+            msg = str(exc)
+            if msg == "missing_apikey":
+                self.send_json(503, {"error": "missing_apikey"})
+                return
+            if msg == "aprsfi_http_429":
+                self.send_json(429, {"error": "rate_limited"})
+                return
+            self.send_json(502, {"error": "upstream_failed", "detail": [msg]})
+        except Exception as exc:  # noqa: BLE001
+            self.send_json(502, {"error": "upstream_failed", "detail": [str(exc)]})
+
     def send_json(self, code: int, obj: dict):
         raw = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
@@ -223,6 +369,9 @@ def main():
     print(f"Serving {DOCS_DIR}")
     print(f"Open http://{HOST}:{PORT}/")
     print("Radar API: GET /api/aircraft?lat=..&lon=..&radiusKm=80")
+    print("APRS API:  GET /api/aprs?lat=..&lon=..&radiusKm=80  (or &name=CALL)")
+    if not _aprs_api_key():
+        print("APRS key:  set APRSFI_APIKEY or docs/.aprs-apikey")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

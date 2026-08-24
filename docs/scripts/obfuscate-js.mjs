@@ -23,6 +23,7 @@ const FILES = [
   'flash.js',
   'airline_icao.js',
   'radar.js',
+  'aprs.js',
   'manual.js',
 ];
 

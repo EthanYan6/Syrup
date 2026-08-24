@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260820radar9">
+  <link rel="stylesheet" href="css/style.css?v=20260824range3">
   <script src="//cdn.busuanzi.cc/busuanzi/3.6.9/busuanzi.min.js" defer></script>
 </head>
 <body>
@@ -196,6 +196,7 @@
           <button class="tab" type="button" data-tab="writefreq" id="tabWritefreq" data-i18n="tabWritefreq">写频</button>
           <button class="tab" type="button" data-tab="basicinfo" id="tabBasicinfo" data-i18n="tabBasicinfo">基础信息</button>
           <button class="tab" type="button" data-tab="radar" id="tabRadar" data-i18n="tabRadar">飞机雷达探测</button>
+          <button class="tab" type="button" data-tab="aprs" id="tabAprs" data-i18n="tabAprs">APRS地图</button>
         </div>
 
         <!-- DUMP -->
@@ -434,6 +435,33 @@
               </div>
             </div>
             <p class="radar-howto" id="radarHowto" data-i18n="radarHowto">① 手台正常开机 → ② 点「连接手台」→ ③ 点选飞机（或点「推送到手台」）→ 机身打开飞机页并 AM 收听</p>
+            <div class="radar-coord-bar">
+              <label class="radar-coord-field">
+                <span data-i18n="radarLat">纬度</span>
+                <input id="radarLatInput" type="number" step="any" min="-90" max="90" inputmode="decimal" data-i18n-placeholder="radarLatPlaceholder" placeholder="39.9042" autocomplete="off">
+              </label>
+              <label class="radar-coord-field">
+                <span data-i18n="radarLon">经度</span>
+                <input id="radarLonInput" type="number" step="any" min="-180" max="180" inputmode="decimal" data-i18n-placeholder="radarLonPlaceholder" placeholder="116.4074" autocomplete="off">
+              </label>
+              <label class="radar-coord-field">
+                <span data-i18n="radarRadius">范围 (km)</span>
+                <select id="radarRadiusInput" class="radar-radius-input" aria-label="Scan range">
+                  <option value="20">20 km</option>
+                  <option value="40">40 km</option>
+                  <option value="50">50 km</option>
+                  <option value="80" selected>80 km</option>
+                  <option value="100">100 km</option>
+                  <option value="120">120 km</option>
+                  <option value="160">160 km</option>
+                  <option value="200">200 km</option>
+                  <option value="250">250 km</option>
+                </select>
+              </label>
+              <button type="button" class="btn-inline btn-secondary" id="radarQueryBtn" data-i18n="radarQuery">查询</button>
+              <button type="button" class="btn-inline btn-secondary" id="radarUseMyLocationBtn" data-i18n="radarUseMyLocation">重置定位</button>
+            </div>
+            <p class="radar-coverage-hint" data-i18n="radarCoverageHint">目前国内只能查到国外、港澳台地区、广州周边、合肥到南京周边、成都至绵阳周边、北京至石家庄至邯郸至天津范围及周边、西安周边300km，其它用户可手动修改经纬度，获取地图。</p>
             <div class="radar-meta" id="radarMeta">
               <span id="radarCount" data-i18n="radarCountZero">飞机：0</span>
               <span class="radar-meta-sep" aria-hidden="true">·</span>
@@ -463,6 +491,87 @@
               <ul class="radar-list" id="radarList" aria-label="Aircraft list"></ul>
             </div>
             <p class="radar-footnote" data-i18n="radarFootnote" data-i18n-html>数据来源：<a href="https://adsb.fi/" target="_blank" rel="noopener noreferrer">adsb.fi</a>（ADS-B）。</p>
+          </section>
+        </div>
+
+        <!-- APRS MAP (aprs.fi, web-only) -->
+        <div class="tab-content" id="aprs-content">
+          <section class="section radar-panel">
+            <div class="radar-toolbar">
+              <div class="radar-status" id="aprsStatus" aria-live="polite" data-i18n="aprsStatusIdle">进入本页后将请求定位并扫描附近 APRS 台站</div>
+              <div class="radar-toolbar-actions">
+                <button type="button" class="btn-inline btn-secondary" id="aprsConnectBtn" data-i18n="aprsConnect">连接手台</button>
+                <button type="button" class="btn-inline btn-secondary" id="aprsPushBtn" data-i18n="aprsPush" disabled>推送到手台</button>
+                <button type="button" class="btn-inline btn-secondary" id="aprsRefreshBtn" data-i18n="aprsRefresh">刷新</button>
+                <button type="button" class="btn-inline btn-secondary" id="aprsPauseBtn" data-i18n="aprsPause">暂停</button>
+              </div>
+            </div>
+            <p class="radar-howto" id="aprsHowto" data-i18n="aprsHowto">① 手台正常开机 → ② 点「连接手台」→ ③ 点选台站（或点「推送到手台」）→ 机身打开 APRS 页（需后续固件支持）</p>
+            <div class="aprs-search-row">
+              <label class="aprs-key-label" for="aprsApiKeyInput" data-i18n="aprsApiKey">aprs.fi 密钥</label>
+              <input type="password" id="aprsApiKeyInput" maxlength="80" autocomplete="off" spellcheck="false" data-i18n-placeholder="aprsApiKeyPlaceholder" placeholder="在 aprs.fi 账户设置中申请">
+              <button type="button" class="btn-inline btn-secondary" id="aprsApiKeySaveBtn" data-i18n="aprsApiKeySave">保存</button>
+            </div>
+            <div class="radar-coord-bar">
+              <label class="radar-coord-field">
+                <span data-i18n="radarLat">纬度</span>
+                <input id="aprsLatInput" type="number" step="any" min="-90" max="90" inputmode="decimal" data-i18n-placeholder="radarLatPlaceholder" placeholder="39.9042" autocomplete="off">
+              </label>
+              <label class="radar-coord-field">
+                <span data-i18n="radarLon">经度</span>
+                <input id="aprsLonInput" type="number" step="any" min="-180" max="180" inputmode="decimal" data-i18n-placeholder="radarLonPlaceholder" placeholder="116.4074" autocomplete="off">
+              </label>
+              <label class="radar-coord-field">
+                <span data-i18n="radarRadius">范围 (km)</span>
+                <select id="aprsRadiusInput" class="radar-radius-input" aria-label="Scan range">
+                  <option value="20">20 km</option>
+                  <option value="40">40 km</option>
+                  <option value="50">50 km</option>
+                  <option value="80" selected>80 km</option>
+                  <option value="100">100 km</option>
+                  <option value="120">120 km</option>
+                  <option value="160">160 km</option>
+                  <option value="200">200 km</option>
+                  <option value="250">250 km</option>
+                </select>
+              </label>
+              <button type="button" class="btn-inline btn-secondary" id="aprsCoordQueryBtn" data-i18n="radarQuery">查询</button>
+              <button type="button" class="btn-inline btn-secondary" id="aprsUseMyLocationBtn" data-i18n="aprsMyLocation">重置定位</button>
+            </div>
+            <div class="aprs-search-row">
+              <input type="search" id="aprsSearch" maxlength="80" autocomplete="off" spellcheck="false" data-i18n-placeholder="aprsSearchPlaceholder" placeholder="查询呼号，多个用逗号分隔">
+              <button type="button" class="btn-inline btn-secondary" id="aprsSearchBtn" data-i18n="aprsSearchBtn">查询</button>
+            </div>
+            <div class="radar-meta" id="aprsMeta">
+              <span id="aprsCount" data-i18n="aprsCountZero">台站：0</span>
+              <span class="radar-meta-sep" aria-hidden="true">·</span>
+              <span id="aprsUpdated" data-i18n="aprsUpdatedNever">上次刷新：—</span>
+            </div>
+            <div class="radar-layout">
+              <div class="radar-stage aprs-stage">
+                <canvas id="aprsCanvas" width="420" height="420" aria-label="APRS map"></canvas>
+              </div>
+              <aside class="radar-detail" id="aprsDetail">
+                <h3 class="radar-detail-title" data-i18n="aprsDetailTitle">台站信息</h3>
+                <p class="radar-detail-empty" id="aprsDetailEmpty" data-i18n="aprsDetailEmpty">点击地图上的目标查看详情</p>
+                <dl class="radar-detail-fields" id="aprsDetailFields" hidden>
+                  <div><dt data-i18n="aprsCallsign">呼号</dt><dd id="aprsFieldCallsign">—</dd></div>
+                  <div><dt data-i18n="aprsType">类型</dt><dd id="aprsFieldType">—</dd></div>
+                  <div><dt data-i18n="aprsComment">注释</dt><dd id="aprsFieldComment">—</dd></div>
+                  <div><dt data-i18n="aprsSpeed">速度</dt><dd id="aprsFieldSpeed">—</dd></div>
+                  <div><dt data-i18n="aprsCourse">航向</dt><dd id="aprsFieldCourse">—</dd></div>
+                  <div><dt data-i18n="aprsAltitude">高度</dt><dd id="aprsFieldAlt">—</dd></div>
+                  <div><dt data-i18n="aprsDistance">距离</dt><dd id="aprsFieldDist">—</dd></div>
+                  <div><dt data-i18n="aprsBearing">方位</dt><dd id="aprsFieldBrg">—</dd></div>
+                  <div><dt data-i18n="aprsHeard">最后出现</dt><dd id="aprsFieldHeard">—</dd></div>
+                  <div><dt data-i18n="aprsPath">路径</dt><dd id="aprsFieldPath">—</dd></div>
+                </dl>
+              </aside>
+            </div>
+            <div class="radar-list-wrap">
+              <ul class="radar-list" id="aprsList" aria-label="APRS station list"></ul>
+            </div>
+            <p class="radar-footnote" data-i18n="aprsFootnote" data-i18n-html>数据来源：<a href="https://aprs.fi/" target="_blank" rel="noopener noreferrer">aprs.fi</a>。</p>
           </section>
         </div>
 
@@ -556,11 +665,12 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/min/lang.js?v=20260824obf"></script>
+  <script src="js/min/lang.js?v=20260824resetloc"></script>
   <script src="js/min/gb2312_codec.js?v=20260824obf"></script>
-  <script src="js/min/flash.js?v=20260824obf"></script>
+  <script src="js/min/flash.js?v=20260824aprs"></script>
   <script src="js/min/airline_icao.js?v=20260824obf"></script>
-  <script src="js/min/radar.js?v=20260824obf"></script>
+  <script src="js/min/radar.js?v=20260824worker"></script>
+  <script src="js/min/aprs.js?v=20260824autopush"></script>
   <script>
   (function() {
     var coffeeBtn = document.getElementById('coffeeBtn');
