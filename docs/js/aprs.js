@@ -536,6 +536,8 @@
       params.set('radiusKm', String(currentRadiusKm()));
       state.lastQueryName = '';
     }
+    var key = currentApiKey();
+    if (key) params.set('apikey', key);
 
     var endpoints = aprsEndpoints();
     var qi = params.toString();
@@ -555,8 +557,7 @@
       }
       var base = endpoints[index];
       fetch(base + (base.indexOf('?') >= 0 ? '&' : '?') + qi, {
-        cache: 'no-store',
-        headers: fetchHeaders()
+        cache: 'no-store'
       })
         .then(function (res) {
           if (res.status === 429) {

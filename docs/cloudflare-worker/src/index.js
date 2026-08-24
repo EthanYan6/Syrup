@@ -1,7 +1,9 @@
+import { connect } from 'cloudflare:sockets';
+
 /**
- * Syrup Aircraft Radar — Cloudflare Worker proxy
+ * Syrup Aircraft Radar / APRS — Cloudflare Worker proxy
  *
- * GitHub Pages cannot run Python; browsers cannot call adsb.fi due to CORS.
+ * GitHub Pages cannot run Python; browsers cannot call adsb.fi / api.aprs.fi (CORS).
  *
  * Deploy:
  *   cd docs/cloudflare-worker
@@ -42,7 +44,7 @@ function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-APRS-ApiKey',
+    'Access-Control-Allow-Headers': 'Content-Type, X-APRS-ApiKey, Authorization',
     'Cache-Control': 'no-store',
   };
 }
@@ -235,6 +237,144 @@ function normalizeAprs(data) {
   return { source: 'aprs.fi', stations };
 }
 
+function dmToDeg(deg, minutes, hemi) {
+  let d = Number(deg) + Number(minutes) / 60;
+  if (hemi === 'S' || hemi === 'W') d = -d;
+  return d;
+}
+
+function decodeBase91(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) n = n * 91 + (s.charCodeAt(i) - 33);
+  return n;
+}
+
+function parseUncompressedPos(body) {
+  const m = String(body || '').match(
+    /^(\d{2})(\d{2}\.\d+)([NS])(.)(\d{3})(\d{2}\.\d+)([EW])(.)/
+  );
+  if (!m) return null;
+  return {
+    lat: dmToDeg(m[1], m[2], m[3]),
+    lon: dmToDeg(m[5], m[6], m[7]),
+    symbol: m[4] + m[8],
+    rest: body.slice(m[0].length),
+  };
+}
+
+function parseCompressedPos(body) {
+  if (!body || body.length < 13) return null;
+  const table = body.charAt(0);
+  if (table !== '/' && table !== '\\') return null;
+  const ys = body.slice(1, 5);
+  const xs = body.slice(5, 9);
+  for (let i = 0; i < 8; i++) {
+    const c = (i < 4 ? ys : xs).charCodeAt(i % 4);
+    if (c < 33 || c > 123) return null;
+  }
+  return {
+    lat: 90 - decodeBase91(ys) / 380926,
+    lon: -180 + decodeBase91(xs) / 190463,
+    symbol: table + body.charAt(9),
+    rest: body.slice(13),
+  };
+}
+
+function parseAprsInfo(info) {
+  if (!info) return null;
+  const t = info.charAt(0);
+  let start = 0;
+  if (t === '!' || t === '=') start = 1;
+  else if (t === '/' || t === '@') start = 8;
+  else if (t === ';') start = 18;
+  else return null;
+  if (info.length <= start) return null;
+  const body = info.slice(start);
+  return parseUncompressedPos(body) || parseCompressedPos(body);
+}
+
+function parseAprsPacket(line) {
+  if (!line || line.charAt(0) === '#') return null;
+  const gt = line.indexOf('>');
+  const col = line.indexOf(':');
+  if (gt < 1 || col <= gt) return null;
+  const src = line.slice(0, gt).trim();
+  if (!src) return null;
+  const info = line.slice(col + 1);
+  const pos = parseAprsInfo(info);
+  if (!pos || !Number.isFinite(pos.lat) || !Number.isFinite(pos.lon)) return null;
+  if (pos.lat < -90 || pos.lat > 90 || pos.lon < -180 || pos.lon > 180) return null;
+  let comment = String(pos.rest || '');
+  const cs = comment.match(/^(\d{3})\/(\d{3})(.*)$/);
+  let course = null;
+  let speed = null;
+  if (cs) {
+    course = Number(cs[1]);
+    speed = Number(cs[2]) * 1.852;
+    comment = cs[3] || '';
+  }
+  comment = comment.replace(/^[\s>/]*/, '').slice(0, 80);
+  return {
+    name: src,
+    srccall: src,
+    type: info.charAt(0) === ';' ? 'o' : 'l',
+    lat: pos.lat,
+    lon: pos.lon,
+    comment,
+    speed_kmh: Number.isFinite(speed) ? speed : null,
+    course: Number.isFinite(course) ? course : null,
+    altitude_m: null,
+    lasttime: Math.round(Date.now() / 1000),
+    symbol: pos.symbol || '',
+    path: line.slice(gt + 1, col),
+    phg: '',
+  };
+}
+
+async function fetchAprsIsNearby(lat, lon, radiusKm) {
+  const filter = `r/${lat.toFixed(4)}/${lon.toFixed(4)}/${Math.round(radiusKm)}`;
+  const login = `user BD1AHN-TS pass -1 vers SyrupAprs 1.0 filter ${filter}\r\n`;
+  const socket = connect({ hostname: 'rotate.aprs2.net', port: 14580 });
+  const writer = socket.writable.getWriter();
+  const reader = socket.readable.getReader();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  try {
+    await writer.write(encoder.encode(login));
+    let buf = '';
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const remain = deadline - Date.now();
+      const result = await Promise.race([
+        reader.read(),
+        new Promise(function (resolve) {
+          setTimeout(function () {
+            resolve({ timeout: true });
+          }, remain);
+        }),
+      ]);
+      if (result.timeout || result.done) break;
+      buf += decoder.decode(result.value || new Uint8Array(), { stream: true });
+    }
+    const seen = new Map();
+    buf.split(/\r?\n/).forEach(function (line) {
+      const st = parseAprsPacket(line.trim());
+      if (st) seen.set(st.name, st);
+    });
+    return { source: 'aprs-is', stations: Array.from(seen.values()) };
+  } finally {
+    try {
+      writer.releaseLock();
+    } catch (e) {}
+    try {
+      reader.releaseLock();
+    } catch (e) {}
+    try {
+      socket.close();
+    } catch (e) {}
+  }
+}
+
 async function handleAprs(url, env, request) {
   const name = String(url.searchParams.get('name') || '').trim();
   const lat = parseFloat(url.searchParams.get('lat') || '');
@@ -256,10 +396,11 @@ async function handleAprs(url, env, request) {
   const headerKey = request
     ? String(request.headers.get('X-APRS-ApiKey') || '').trim()
     : '';
-  const apikey = headerKey || String((env && env.APRSFI_APIKEY) || '').trim();
-  if (!apikey) {
-    return jsonResponse({ error: 'missing_apikey' }, 503);
-  }
+  const queryKey = String(
+    url.searchParams.get('apikey') || url.searchParams.get('key') || ''
+  ).trim();
+  const apikey =
+    headerKey || queryKey || String((env && env.APRSFI_APIKEY) || '').trim();
 
   const cacheName = name || '';
   const key = cacheName
@@ -270,17 +411,29 @@ async function handleAprs(url, env, request) {
     return jsonResponse({ ...cached, cached: true });
   }
 
+  if (!name && hasLat) {
+    try {
+      const payload = await fetchAprsIsNearby(lat, lon, radiusKm);
+      setCached(`aprs:${key}`, payload);
+      return jsonResponse(payload);
+    } catch (e) {
+      return jsonResponse(
+        { error: 'upstream_failed', detail: [String(e && e.message ? e.message : e)] },
+        502
+      );
+    }
+  }
+
+  if (!apikey) {
+    return jsonResponse({ error: 'missing_apikey' }, 503);
+  }
+
   const params = new URLSearchParams({
     what: 'loc',
     apikey,
     format: 'json',
+    name,
   });
-  if (name) params.set('name', name);
-  if (hasLat) {
-    params.set('lat', lat.toFixed(5));
-    params.set('lng', lon.toFixed(5));
-    params.set('distance', String(Math.round(radiusKm)));
-  }
 
   try {
     const res = await fetchUpstream(

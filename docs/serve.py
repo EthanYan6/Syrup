@@ -5,7 +5,7 @@
 adsb.fi and api.aprs.fi block cross-origin browser calls. This server
 serves docs/ and proxies:
   /api/aircraft  — ADS-B (adsb.fi, then adsb.lol, then OpenSky)
-  /api/aprs      — aprs.fi loc API (needs APRSFI_APIKEY)
+  /api/aprs      — nearby via APRS-IS; callsign lookup via aprs.fi (API key)
 
 Usage (from repo root or docs/):
     python docs/serve.py
@@ -17,6 +17,9 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
+import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -220,9 +223,120 @@ def normalize_aprs(data: dict) -> dict:
     return {"source": "aprs.fi", "stations": stations}
 
 
-def fetch_aprs_fi(
-    name: str, lat: float | None, lon: float | None, radius_km: float, apikey: str = ""
-) -> dict:
+def _dm_to_deg(deg: str, minutes: str, hemi: str) -> float:
+    d = float(deg) + float(minutes) / 60.0
+    if hemi in ("S", "W"):
+        d = -d
+    return d
+
+
+def _parse_uncompressed_pos(body: str):
+    m = re.match(
+        r"^(\d{2})(\d{2}\.\d+)([NS])(.)(\d{3})(\d{2}\.\d+)([EW])(.)",
+        body or "",
+    )
+    if not m:
+        return None
+    return {
+        "lat": _dm_to_deg(m.group(1), m.group(2), m.group(3)),
+        "lon": _dm_to_deg(m.group(5), m.group(6), m.group(7)),
+        "symbol": m.group(4) + m.group(8),
+        "rest": body[m.end() :],
+    }
+
+
+def _parse_aprs_info(info: str):
+    if not info:
+        return None
+    t = info[0]
+    start = 0
+    if t in ("!", "="):
+        start = 1
+    elif t in ("/", "@"):
+        start = 8
+    elif t == ";":
+        start = 18
+    else:
+        return None
+    if len(info) <= start:
+        return None
+    return _parse_uncompressed_pos(info[start:])
+
+
+def _parse_aprs_packet(line: str) -> dict | None:
+    if not line or line.startswith("#"):
+        return None
+    gt = line.find(">")
+    col = line.find(":")
+    if gt < 1 or col <= gt:
+        return None
+    src = line[:gt].strip()
+    if not src:
+        return None
+    info = line[col + 1 :]
+    pos = _parse_aprs_info(info)
+    if not pos:
+        return None
+    lat, lon = pos["lat"], pos["lon"]
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    comment = pos.get("rest") or ""
+    course = speed = None
+    cs = re.match(r"^(\d{3})/(\d{3})(.*)$", comment)
+    if cs:
+        course = float(cs.group(1))
+        speed = float(cs.group(2)) * 1.852
+        comment = cs.group(3) or ""
+    comment = re.sub(r"^[\s>/]*", "", comment)[:80]
+    return {
+        "name": src,
+        "srccall": src,
+        "type": "o" if info[:1] == ";" else "l",
+        "lat": lat,
+        "lon": lon,
+        "comment": comment,
+        "speed_kmh": speed,
+        "course": course,
+        "altitude_m": None,
+        "lasttime": int(time.time()),
+        "symbol": pos.get("symbol") or "",
+        "path": line[gt + 1 : col],
+        "phg": "",
+    }
+
+
+def fetch_aprs_is_nearby(lat: float, lon: float, radius_km: float) -> dict:
+    filt = f"r/{lat:.4f}/{lon:.4f}/{int(round(radius_km))}"
+    login = f"user BD1AHN-TS pass -1 vers SyrupAprs 1.0 filter {filt}\r\n"
+    sock = socket.create_connection(("rotate.aprs2.net", 14580), timeout=8)
+    buf = b""
+    try:
+        sock.settimeout(1.0)
+        sock.sendall(login.encode("ascii"))
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            try:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+            except socket.timeout:
+                continue
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+    seen: dict[str, dict] = {}
+    text = buf.decode("utf-8", errors="replace")
+    for raw in text.splitlines():
+        st = _parse_aprs_packet(raw.strip())
+        if st:
+            seen[st["name"]] = st
+    return {"source": "aprs-is", "stations": list(seen.values())}
+
+
+def fetch_aprs_fi(name: str, apikey: str = "") -> dict:
     apikey = (apikey or _aprs_api_key()).strip()
     if not apikey:
         raise RuntimeError("missing_apikey")
@@ -230,13 +344,8 @@ def fetch_aprs_fi(
         "what": "loc",
         "apikey": apikey,
         "format": "json",
+        "name": name,
     }
-    if name:
-        params["name"] = name
-    if lat is not None and lon is not None:
-        params["lat"] = f"{lat:.5f}"
-        params["lng"] = f"{lon:.5f}"
-        params["distance"] = str(int(round(radius_km)))
     url = "https://api.aprs.fi/api/get?" + urllib.parse.urlencode(params)
     code, body, _ = fetch_url(url, timeout=22.0, user_agent=APRS_UA)
     if code == 429:
@@ -333,10 +442,15 @@ class Handler(SimpleHTTPRequestHandler):
         client_key = (
             self.headers.get("X-APRS-ApiKey")
             or self.headers.get("x-aprs-apikey")
+            or (qs.get("apikey", [""])[0] or "")
+            or (qs.get("key", [""])[0] or "")
             or ""
         ).strip()
         try:
-            payload = fetch_aprs_fi(name, lat, lon, radius_km, apikey=client_key)
+            if name:
+                payload = fetch_aprs_fi(name, apikey=client_key)
+            else:
+                payload = fetch_aprs_is_nearby(lat, lon, radius_km)
             self.send_json(200, payload)
         except RuntimeError as exc:
             msg = str(exc)
