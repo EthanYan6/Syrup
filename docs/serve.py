@@ -263,11 +263,24 @@ def _parse_compressed_pos(body: str):
         o = ord(ch)
         if o < 33 or o > 123:
             return None
+    course = speed = None
+    # csT: when T bits indicate course/speed (APRS 1.01 §9)
+    if len(body) >= 13:
+        tbits = (ord(body[12]) - 33) & 0x18
+        if tbits == 0x10:
+            course = (ord(body[10]) - 33) * 4
+            if course >= 360:
+                course = 0.0
+            else:
+                course = float(course)
+            speed = (1.08 ** (ord(body[11]) - 33) - 1.0) * 1.852  # kn → km/h
     return {
         "lat": 90.0 - _decode_base91(ys) / 380926.0,
         "lon": -180.0 + _decode_base91(xs) / 190463.0,
         "symbol": table + body[9],
         "rest": body[13:],
+        "course": course,
+        "speed_kmh": speed,
     }
 
 
@@ -308,7 +321,8 @@ def _parse_aprs_packet(line: str) -> dict | None:
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return None
     comment = pos.get("rest") or ""
-    course = speed = None
+    course = pos.get("course")
+    speed = pos.get("speed_kmh")
     cs = re.match(r"^(\d{3})/(\d{3})(.*)$", comment)
     if cs:
         course = float(cs.group(1))

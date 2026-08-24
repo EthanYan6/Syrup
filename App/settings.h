@@ -150,6 +150,9 @@ enum ACTION_OPT_t {
 #ifdef ENABLE_AIRCRAFT_RADAR
     ACTION_OPT_AIRCRAFT,
 #endif
+#ifdef ENABLE_APRS
+    ACTION_OPT_APRS,
+#endif
     ACTION_OPT_LEN
 };
 

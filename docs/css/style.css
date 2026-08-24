@@ -3163,6 +3163,38 @@ body.help-page {
   margin: 0;
   word-break: break-all;
 }
+/* APRS detail: label + value on one tight row (e.g. 速度(SPD) 120 km/h) */
+#aprsDetail.radar-detail {
+  min-width: 0;
+  overflow: hidden;
+}
+#aprsDetailFields.radar-detail-fields {
+  gap: 4px;
+}
+#aprsDetailFields.radar-detail-fields > div {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 4px;
+  grid-template-columns: unset;
+  min-width: 0;
+}
+#aprsDetailFields.radar-detail-fields dt {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+#aprsDetailFields.radar-detail-fields dd {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 400;
+  word-break: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
 .radar-list-wrap {
   margin-top: 14px;
   border: 1px solid var(--border-default);

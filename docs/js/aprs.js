@@ -167,12 +167,11 @@
 
   function formatSpeed(kmh) {
     if (kmh == null || !isFinite(kmh)) return '—';
-    var kt = Math.round(kmh / 1.852);
-    return Math.round(kmh) + ' km/h / ' + kt + ' kt';
+    return Math.round(kmh) + ' km/h';
   }
 
   function formatCourse(deg) {
-    if (deg == null || !isFinite(deg)) return '—';
+    if (deg == null || !isFinite(deg) || deg < 0) return '—';
     return Math.round(deg) + '°';
   }
 
@@ -241,7 +240,14 @@
     };
     Object.keys(map).forEach(function (id) {
       var el = $(id);
-      if (el) el.textContent = map[id];
+      if (!el) return;
+      var text = map[id];
+      el.textContent = text;
+      if (text && text !== '—') {
+        el.setAttribute('title', text);
+      } else {
+        el.removeAttribute('title');
+      }
     });
     renderList();
     if (pushToRadio) {
@@ -286,16 +292,16 @@
       noteUserPush();
     }
     var label = (st && st.name) || '';
-    var altM = (st && typeof st.alt === 'number' && isFinite(st.alt)) ? Math.round(st.alt) : -2147483648;
     var distM = (st && typeof st.distanceKm === 'number' && isFinite(st.distanceKm))
       ? Math.min(65534, Math.round(st.distanceKm * 1000))
       : 0xFFFF;
     api.pushAprs({
       callsign: label,
-      altitudeM: altM,
+      bearing: (st && typeof st.bearing === 'number' && isFinite(st.bearing)) ? Math.round(st.bearing) : -1,
       distanceM: distM,
       course: (st && typeof st.course === 'number' && isFinite(st.course)) ? Math.round(st.course) : -1,
       speedKmh: (st && typeof st.speedKmh === 'number' && isFinite(st.speedKmh)) ? Math.round(st.speedKmh) : -1,
+      comment: (st && st.comment) ? String(st.comment) : '',
       openPage: true
     }).then(function () {
       setStatus(fromAuto ? 'aprsStatusAutoPushed' : 'aprsStatusPushed', {
@@ -430,10 +436,19 @@
         type: String(row.type || 'l'),
         lat: lat,
         lon: lon,
-        comment: String(row.comment || ''),
-        alt: typeof row.altitude_m === 'number' ? row.altitude_m : null,
-        speedKmh: typeof row.speed_kmh === 'number' ? row.speed_kmh : null,
-        course: typeof row.course === 'number' ? row.course : null,
+        comment: String(row.comment || '').trim(),
+        alt: (function () {
+          var a = Number(row.altitude_m);
+          return Number.isFinite(a) ? a : null;
+        })(),
+        speedKmh: (function () {
+          var s = Number(row.speed_kmh);
+          return Number.isFinite(s) && s >= 0 ? s : null;
+        })(),
+        course: (function () {
+          var c = Number(row.course);
+          return Number.isFinite(c) && c >= 0 ? c : null;
+        })(),
         lasttime: typeof row.lasttime === 'number' ? row.lasttime : null,
         symbol: String(row.symbol || ''),
         path: String(row.path || ''),

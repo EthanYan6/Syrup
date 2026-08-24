@@ -36,6 +36,9 @@
 #ifdef ENABLE_AIRCRAFT_RADAR
     #include "app/aircraft.h"
 #endif
+#ifdef ENABLE_APRS
+    #include "app/aprs.h"
+#endif
 #include "ui/inputbox.h"
 #include "ui/main.h"
 #include "ui/menu.h"
@@ -70,6 +73,10 @@ void (*const UI_DisplayFunctions[])(void) = {
 
 #ifdef ENABLE_AIRCRAFT_RADAR
     [DISPLAY_AIRCRAFT] = &UI_DisplayAircraft,
+#endif
+
+#ifdef ENABLE_APRS
+    [DISPLAY_APRS] = &UI_DisplayAprs,
 #endif
 };
 

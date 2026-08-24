@@ -564,6 +564,9 @@ const t_sidefunction gSubMenu_SIDEFUNCTIONS[] =
 #ifdef ENABLE_AIRCRAFT_RADAR
     {"AIRCRAFT\nRADAR", ACTION_OPT_AIRCRAFT},
 #endif
+#ifdef ENABLE_APRS
+    {"APRS",            ACTION_OPT_APRS},
+#endif
 };
 
 const uint8_t gSubMenu_SIDEFUNCTIONS_size = ARRAY_SIZE(gSubMenu_SIDEFUNCTIONS);

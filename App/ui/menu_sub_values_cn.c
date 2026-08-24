@@ -299,6 +299,9 @@ const char *const gSubMenu_SIDEFUNCTIONS_CN[] = {
 #ifdef ENABLE_AIRCRAFT_RADAR
     "\xe9\xa3\x9e\xe6\x9c\xba\xe9\x9b\xb7\xe8\xbe\xbe",
 #endif
+#ifdef ENABLE_APRS
+    "APRS",
+#endif
 };
 
 /* 内、计、划 不在嵌入中文字库；第一行用 Inside，第三行用「频段」。 */

@@ -669,40 +669,52 @@ window.SyrupSerial = {
     await sendMessage(msg);
   },
   /**
-   * Firmware later. Same layout as aircraft, command 0x0542 (0x0541 is aircraft ACK).
-   * @param {{callsign:string, altitudeM:number, distanceM:number, course?:number, speedKmh?:number, openPage?:boolean}} target
+   * APRS target for the radio LCD. Command 0x0542 (0x0543 ACK).
+   * @param {{callsign:string, bearing?:number, distanceM:number, course?:number, speedKmh?:number, comment?:string, openPage?:boolean}} target
    */
   pushAprs: async function (target) {
     if (!writer) {
       throw new Error('not_connected');
     }
     const MSG_APRS = 0x0542;
-    const msg = createMessage(MSG_APRS, 19);
-    const v = new DataView(msg.buffer);
     const cs = String((target && target.callsign) || '').toUpperCase().replace(/[^A-Z0-9\-]/g, '').slice(0, 9);
-    for (let i = 0; i < 8; i++) {
+    let commentBytes = new Uint8Array(0);
+    if (target && target.comment) {
+      commentBytes = new TextEncoder().encode(String(target.comment)).slice(0, 80);
+    }
+    const dataLen = 19 + commentBytes.length;
+    const msg = createMessage(MSG_APRS, dataLen);
+    const v = new DataView(msg.buffer);
+    for (let i = 0; i < 10; i++) {
       msg[4 + i] = i < cs.length ? cs.charCodeAt(i) : 0;
     }
-    let alt = (target && typeof target.altitudeM === 'number' && isFinite(target.altitudeM))
-      ? Math.round(target.altitudeM)
-      : -2147483648;
-    v.setInt32(12, alt, true);
-    let dist = 0xFFFF;
-    if (target && typeof target.distanceM === 'number' && isFinite(target.distanceM) && target.distanceM >= 0) {
-      dist = Math.min(0xFFFE, Math.round(target.distanceM));
+    const unk = 0xFFFF;
+    function u16orUnk(val) {
+      if (typeof val === 'number' && isFinite(val) && val >= 0) {
+        return Math.min(0xFFFE, Math.round(val));
+      }
+      return unk;
     }
-    v.setUint16(16, dist, true);
-    let extra = 0;
+    let brg = unk;
+    if (target && typeof target.bearing === 'number' && isFinite(target.bearing) && target.bearing >= 0) {
+      brg = Math.round(target.bearing) % 360;
+    }
+    let dist = u16orUnk(target && target.distanceM);
+    let spd = u16orUnk(target && target.speedKmh);
+    let cse = unk;
     if (target && typeof target.course === 'number' && isFinite(target.course) && target.course >= 0) {
-      extra |= (Math.round(target.course) % 360) & 0x1FF;
+      cse = Math.round(target.course) % 360;
     }
-    if (target && typeof target.speedKmh === 'number' && isFinite(target.speedKmh) && target.speedKmh >= 0) {
-      extra |= (Math.min(0x7FFFF, Math.round(target.speedKmh)) << 9);
-    }
-    v.setUint32(18, extra >>> 0, true);
+    v.setUint16(14, brg, true);
+    v.setUint16(16, dist, true);
+    v.setUint16(18, spd, true);
+    v.setUint16(20, cse, true);
     let flags = 0;
     if (target && target.openPage) flags |= 2;
     msg[22] = flags;
+    if (commentBytes.length) {
+      msg.set(commentBytes, 23);
+    }
     await sendMessage(msg);
   }
 };

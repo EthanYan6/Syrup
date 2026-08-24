@@ -46,6 +46,9 @@
 #ifdef ENABLE_AIRCRAFT_RADAR
     #include "app/aircraft.h"
 #endif
+#ifdef ENABLE_APRS
+    #include "app/aprs.h"
+#endif
 #include "app/yan_id_rf.h"
 #include "app/scanner.h"
 #if defined(ENABLE_UART) || defined(ENABLE_USB)
@@ -131,6 +134,10 @@ void (*const ProcessKeysFunctions[])(KEY_Code_t Key, bool bKeyPressed, bool bKey
 
 #ifdef ENABLE_AIRCRAFT_RADAR
     [DISPLAY_AIRCRAFT] = &AIRCRAFT_ProcessKeys,
+#endif
+
+#ifdef ENABLE_APRS
+    [DISPLAY_APRS] = &APRS_ProcessKeys,
 #endif
 };
 

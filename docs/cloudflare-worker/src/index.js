@@ -272,11 +272,23 @@ function parseCompressedPos(body) {
     const c = (i < 4 ? ys : xs).charCodeAt(i % 4);
     if (c < 33 || c > 123) return null;
   }
+  let course = null;
+  let speed_kmh = null;
+  /* csT: T bits 0x10 → course/speed (APRS 1.01 §9) */
+  const tbits = (body.charCodeAt(12) - 33) & 0x18;
+  if (tbits === 0x10) {
+    let cse = (body.charCodeAt(10) - 33) * 4;
+    if (cse >= 360) cse = 0;
+    course = cse;
+    speed_kmh = (Math.pow(1.08, body.charCodeAt(11) - 33) - 1) * 1.852;
+  }
   return {
     lat: 90 - decodeBase91(ys) / 380926,
     lon: -180 + decodeBase91(xs) / 190463,
     symbol: table + body.charAt(9),
     rest: body.slice(13),
+    course,
+    speed_kmh,
   };
 }
 
@@ -305,9 +317,9 @@ function parseAprsPacket(line) {
   if (!pos || !Number.isFinite(pos.lat) || !Number.isFinite(pos.lon)) return null;
   if (pos.lat < -90 || pos.lat > 90 || pos.lon < -180 || pos.lon > 180) return null;
   let comment = String(pos.rest || '');
+  let course = typeof pos.course === 'number' && Number.isFinite(pos.course) ? pos.course : null;
+  let speed = typeof pos.speed_kmh === 'number' && Number.isFinite(pos.speed_kmh) ? pos.speed_kmh : null;
   const cs = comment.match(/^(\d{3})\/(\d{3})(.*)$/);
-  let course = null;
-  let speed = null;
   if (cs) {
     course = Number(cs[1]);
     speed = Number(cs[2]) * 1.852;

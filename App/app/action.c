@@ -57,6 +57,9 @@
 #ifdef ENABLE_AIRCRAFT_RADAR
     #include "app/aircraft.h"
 #endif
+#ifdef ENABLE_APRS
+    #include "app/aprs.h"
+#endif
 #ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
     #include "ui/menu.h"
 #endif
@@ -154,6 +157,9 @@ void (*const action_opt_table[])(void) = {
 #endif
 #ifdef ENABLE_AIRCRAFT_RADAR
     [ACTION_OPT_AIRCRAFT] = &ACTION_Aircraft,
+#endif
+#ifdef ENABLE_APRS
+    [ACTION_OPT_APRS] = &ACTION_Aprs,
 #endif
 };
 

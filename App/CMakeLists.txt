@@ -225,6 +225,12 @@ enable_feature(ENABLE_FEAT_F4HWN_FOXHUNT
 enable_feature(ENABLE_AIRCRAFT_RADAR
     app/aircraft.c
 )
+enable_feature(ENABLE_APRS
+    app/aprs.c
+)
+if(ENABLE_APRS)
+    set_source_files_properties(app/aprs.c PROPERTIES COMPILE_OPTIONS "-Oz")
+endif()
 enable_feature(ENABLE_FEAT_F4HWN_ACTION_PICKER)
 
 if(ENABLE_FEAT_F4HWN_ACTION_PICKER AND NOT ENABLE_FEAT_F4HWN)

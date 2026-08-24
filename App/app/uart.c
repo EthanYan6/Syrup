@@ -48,6 +48,9 @@
 #ifdef ENABLE_AIRCRAFT_RADAR
 #include "app/aircraft.h"
 #endif
+#ifdef ENABLE_APRS
+#include "app/aprs.h"
+#endif
 
 #if defined(ENABLE_OVERLAY)
     #include "sram-overlay.h"
@@ -750,6 +753,45 @@ static void CMD_0540(uint32_t Port, const uint8_t *pBuffer)
 }
 #endif
 
+#ifdef ENABLE_APRS
+/* Payload after header (Size >= 19):
+ *   callsign[10], bearing u16, distance_m u16, speed_kmh u16, course u16,
+ *   flags u8, comment UTF-8 (Size-19 bytes). 0xFFFF = unknown.
+ *   flags bit1 = open page. ACK 0x0543.
+ */
+typedef struct __attribute__((packed)) {
+	Header_t Header;
+	char     Callsign[10];
+	uint16_t BearingDeg;
+	uint16_t DistanceM;
+	uint16_t SpeedKmh;
+	uint16_t CourseDeg;
+	uint8_t  Flags;
+} CMD_0542_t;
+
+static void CMD_0542(uint32_t Port, const uint8_t *pBuffer)
+{
+	const CMD_0542_t *pCmd = (const CMD_0542_t *)pBuffer;
+	Header_t Reply;
+	uint8_t clen = 0;
+	const char *cmt = NULL;
+
+	if (pCmd->Header.Size < 19u)
+		return;
+	if (pCmd->Header.Size > 19u) {
+		uint16_t extra = (uint16_t)(pCmd->Header.Size - 19u);
+		clen = (extra > 80u) ? 80u : (uint8_t)extra;
+		cmt = (const char *)(pBuffer + sizeof(CMD_0542_t));
+	}
+	APRS_SetTarget(pCmd->Callsign, pCmd->BearingDeg, pCmd->DistanceM,
+	               pCmd->SpeedKmh, pCmd->CourseDeg, cmt, clen,
+	               (pCmd->Flags & 2u) != 0);
+	Reply.ID = 0x0543;
+	Reply.Size = 0;
+	SendReply(Port, &Reply, sizeof(Reply));
+}
+#endif
+
 #ifdef ENABLE_UART_RW_BK_REGS
 static void CMD_0601_ReadBK4819Reg(uint32_t Port, const uint8_t *pBuffer)
 {
@@ -1007,6 +1049,12 @@ void UART_HandleCommand(uint32_t Port)
 #ifdef ENABLE_AIRCRAFT_RADAR
         case 0x0540:
             CMD_0540(Port, pUART_Command->Buffer);
+            break;
+#endif
+
+#ifdef ENABLE_APRS
+        case 0x0542:
+            CMD_0542(Port, pUART_Command->Buffer);
             break;
 #endif
 
