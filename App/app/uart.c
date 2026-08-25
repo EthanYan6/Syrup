@@ -756,8 +756,9 @@ static void CMD_0540(uint32_t Port, const uint8_t *pBuffer)
 #ifdef ENABLE_APRS
 /* Payload after header (Size >= 19):
  *   callsign[10], bearing u16, distance_m u16, speed_kmh u16, course u16,
- *   flags u8, comment UTF-8 (Size-19 bytes). 0xFFFF = unknown.
- *   flags bit1 = open page. ACK 0x0543.
+ *   flags u8. 0xFFFF = unknown. flags bit1 = open page. ACK 0x0543.
+ * Size >= 25 also has: year u16, month u8, day u8, altitude_m i16
+ *   (year 0 / altitude 0x8000 = unknown), then comment UTF-8.
  */
 typedef struct __attribute__((packed)) {
 	Header_t Header;
@@ -767,6 +768,10 @@ typedef struct __attribute__((packed)) {
 	uint16_t SpeedKmh;
 	uint16_t CourseDeg;
 	uint8_t  Flags;
+	uint16_t Year;
+	uint8_t  Month;
+	uint8_t  Day;
+	int16_t  AltitudeM;
 } CMD_0542_t;
 
 static void CMD_0542(uint32_t Port, const uint8_t *pBuffer)
@@ -775,17 +780,28 @@ static void CMD_0542(uint32_t Port, const uint8_t *pBuffer)
 	Header_t Reply;
 	uint8_t clen = 0;
 	const char *cmt = NULL;
+	uint16_t extra_off = 19u;
+	uint16_t year = 0;
+	uint8_t month = 0, day = 0;
+	int16_t alt = APRS_ALT_UNK;
 
 	if (pCmd->Header.Size < 19u)
 		return;
-	if (pCmd->Header.Size > 19u) {
-		uint16_t extra = (uint16_t)(pCmd->Header.Size - 19u);
+	if (pCmd->Header.Size >= 25u) {
+		year = pCmd->Year;
+		month = pCmd->Month;
+		day = pCmd->Day;
+		alt = pCmd->AltitudeM;
+		extra_off = 25u;
+	}
+	if (pCmd->Header.Size > extra_off) {
+		uint16_t extra = (uint16_t)(pCmd->Header.Size - extra_off);
 		clen = (extra > 80u) ? 80u : (uint8_t)extra;
-		cmt = (const char *)(pBuffer + sizeof(CMD_0542_t));
+		cmt = (const char *)(pBuffer + sizeof(Header_t) + extra_off);
 	}
 	APRS_SetTarget(pCmd->Callsign, pCmd->BearingDeg, pCmd->DistanceM,
-	               pCmd->SpeedKmh, pCmd->CourseDeg, cmt, clen,
-	               (pCmd->Flags & 2u) != 0);
+	               pCmd->SpeedKmh, pCmd->CourseDeg, year, month, day, alt,
+	               cmt, clen, (pCmd->Flags & 2u) != 0);
 	Reply.ID = 0x0543;
 	Reply.Size = 0;
 	SendReply(Port, &Reply, sizeof(Reply));

@@ -266,7 +266,7 @@
           <button class="tab" type="button" data-tab="writefreq" id="tabWritefreq" data-i18n="tabWritefreq">写频</button>
           <button class="tab" type="button" data-tab="basicinfo" id="tabBasicinfo" data-i18n="tabBasicinfo">基础信息</button>
           <button class="tab" type="button" data-tab="radar" id="tabRadar" data-i18n="tabRadar">飞机雷达探测</button>
-          <button class="tab" type="button" data-tab="aprs" id="tabAprs" data-i18n="tabAprs">APRS地图</button>
+          <button class="tab" type="button" data-tab="aprs" id="tabAprs" data-i18n="tabAprs">APRS探测</button>
         </div>
 
         <!-- DUMP -->
@@ -631,10 +631,11 @@
                   <div><dt data-i18n="aprsComment">注释</dt><dd id="aprsFieldComment">—</dd></div>
                   <div><dt data-i18n="aprsSpeed">速度(SPD)</dt><dd id="aprsFieldSpeed">—</dd></div>
                   <div><dt data-i18n="aprsCourse">航向(CSE)</dt><dd id="aprsFieldCourse">—</dd></div>
-                  <div><dt data-i18n="aprsAltitude">高度</dt><dd id="aprsFieldAlt">—</dd></div>
+                  <div><dt data-i18n="aprsAltitude">高度(ALT)</dt><dd id="aprsFieldAlt">—</dd></div>
                   <div><dt data-i18n="aprsDistance">距离(DIST)</dt><dd id="aprsFieldDist">—</dd></div>
                   <div><dt data-i18n="aprsBearing">方位(BRG)</dt><dd id="aprsFieldBrg">—</dd></div>
                   <div><dt data-i18n="aprsHeard">最后出现</dt><dd id="aprsFieldHeard">—</dd></div>
+                  <div><dt data-i18n="aprsPublished">发布时间(DATE)</dt><dd id="aprsFieldPublished">—</dd></div>
                   <div><dt data-i18n="aprsPath">路径</dt><dd id="aprsFieldPath">—</dd></div>
                 </dl>
               </aside>
@@ -736,12 +737,12 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/min/lang.js?v=20260825chips"></script>
+  <script src="js/min/lang.js?v=20260825aprs7"></script>
   <script src="js/min/gb2312_codec.js?v=20260824obf"></script>
-  <script src="js/min/flash.js?v=20260824aprs3"></script>
+  <script src="js/min/flash.js?v=20260825aprs6"></script>
   <script src="js/min/airline_icao.js?v=20260824obf"></script>
   <script src="js/min/radar.js?v=20260824worker"></script>
-  <script src="js/min/aprs.js?v=20260824aprs4"></script>
+  <script src="js/min/aprs.js?v=20260825aprs6"></script>
   <script>
   (function() {
     var coffeeBtn = document.getElementById('coffeeBtn');

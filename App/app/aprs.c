@@ -3,7 +3,8 @@
  * Licensed under the Apache License, Version 2.0.
  *
  * APRS page: compass dart on the left, English fields on the right.
- * Nav keys (UP/DOWN) open the comment page (UTF-8 Chinese OK).
+ * Nav keys (UP/DOWN) cycle pages: 1 fields, 2 CSE/ALT + comment, 3 extra comment.
+ * SET_NAV=0 (UV-K1 LEFT/RIGHT) inverts direction like MAIN/FM/aircraft.
  */
 
 #ifdef ENABLE_APRS
@@ -16,8 +17,10 @@
 #include "audio.h"
 #include "driver/st7565.h"
 #include "external/printf/printf.h"
+#include "font.h"
 #include "functions.h"
 #include "misc.h"
+#include "settings.h"
 #include "ui/helper.h"
 #include "ui/inputbox.h"
 #include "ui/status.h"
@@ -33,10 +36,22 @@
 #define APRS_YM  3
 #define APRS_YD  4
 #define APRS_TX  50
+/* First page: right-column fields sit 3px lower than the 5-row grid. */
+#define APRS_RIGHT_YOFF 3u
+
+#define APRS_CMT_LINE 40
+#define APRS_CMT_MAX  8
+#define APRS_CMT_H    12u
+#define APRS_CMT_GAP  1u
+#define APRS_CMT_W    124u
+/* 3x5 "1/3" in the bottom-left; comments stop one pixel above it. */
+#define APRS_IND_H    6u
 
 /* BSS: empty page uses has_target=0 so fields show --- (0° is a valid bearing). */
 Aprs_Target_t gAprs;
 static uint8_t sPage;
+static char    sCmt[APRS_CMT_MAX][APRS_CMT_LINE];
+static uint8_t sCmtN;
 
 /* sin(0..90°) step 6°, *255. icos = isin(d+90). */
 static const uint8_t kSin[16] = {
@@ -169,8 +184,9 @@ static void dart_c(int16_t cy, uint16_t brg)
 }
 
 void APRS_SetTarget(const char *callsign, uint16_t bearing_deg, uint16_t distance_m,
-                    uint16_t speed_kmh, uint16_t course_deg, const char *comment,
-                    uint8_t comment_len, bool open_page)
+                    uint16_t speed_kmh, uint16_t course_deg,
+                    uint16_t year, uint8_t month, uint8_t day, int16_t altitude_m,
+                    const char *comment, uint8_t comment_len, bool open_page)
 {
 	uint8_t di = 0;
 
@@ -192,6 +208,10 @@ void APRS_SetTarget(const char *callsign, uint16_t bearing_deg, uint16_t distanc
 	gAprs.distance_m  = distance_m;
 	gAprs.speed_kmh   = speed_kmh;
 	gAprs.course_deg  = (course_deg < 360u) ? course_deg : APRS_UNK;
+	gAprs.year        = year;
+	gAprs.month       = month;
+	gAprs.day         = day;
+	gAprs.altitude_m  = altitude_m;
 	gAprs.has_target  = true;
 
 	if (comment_len >= APRS_COMMENT_MAX)
@@ -228,20 +248,134 @@ void ACTION_Aprs(void)
 	gRequestDisplayScreen = (gScreenToDisplay == DISPLAY_APRS) ? DISPLAY_MAIN : DISPLAY_APRS;
 }
 
+static void row_band(uint8_t i, uint8_t *ys, uint8_t *ye)
+{
+	uint8_t y0 = (uint8_t)((i * APRS_H) / 5u + APRS_RIGHT_YOFF);
+	uint8_t y1 = (uint8_t)(((i + 1u) * APRS_H) / 5u - 1u + APRS_RIGHT_YOFF);
+
+	if (y1 >= APRS_H)
+		y1 = APRS_H - 1u;
+	*ys = y0;
+	*ye = y1;
+}
+
+static void invert_rect(uint8_t x0, uint8_t x1, uint8_t y0, uint8_t y1)
+{
+	uint8_t x, y;
+
+	if (x1 > LCD_WIDTH)
+		x1 = LCD_WIDTH;
+	if (y1 >= APRS_H)
+		y1 = APRS_H - 1u;
+	for (y = y0; y <= y1; y++) {
+		const uint8_t mask = (uint8_t)(1u << (y & 7));
+		uint8_t *row = gFrameBuffer[y >> 3];
+
+		for (x = x0; x < x1; x++)
+			row[x] ^= mask;
+	}
+}
+
 static void put_row(const char *s, uint8_t i)
 {
-	const uint8_t ys = (uint8_t)((i * APRS_H) / 5u);
-	const uint8_t ye = (uint8_t)(((i + 1u) * APRS_H) / 5u - 1u);
+	uint8_t ys, ye;
 
+	row_band(i, &ys, &ye);
 	UI_PrintStringSmallAtPixel(s, APRS_TX, 0, ys, ye, 0u);
 }
 
-static void fmt_deg(char *d, const char *lab, uint16_t v)
+/* Small ° (bit0 = glyph top), Latin font has no 0xB0. */
+static void draw_degree(uint8_t x, uint8_t y)
 {
+	static const uint8_t g[3] = { 0x02, 0x05, 0x02 };
+	uint8_t col;
+	const uint8_t line = (uint8_t)(y / 8);
+	const uint8_t bit_offset = (uint8_t)(y & 7);
+
+	if (line >= FRAME_LINES)
+		return;
+	for (col = 0; col < 3u; col++) {
+		if ((uint16_t)x + col >= LCD_WIDTH)
+			break;
+		gFrameBuffer[line][x + col] |= (uint8_t)(g[col] << bit_offset);
+		if (bit_offset + 7u > 8u && (line + 1u) < FRAME_LINES)
+			gFrameBuffer[line + 1u][x + col] |= (uint8_t)(g[col] >> (8u - bit_offset));
+	}
+}
+
+static void put_deg_xy(const char *lab, uint16_t v, uint8_t x, uint8_t ys, uint8_t ye)
+{
+	char s[22];
+
 	if (!gAprs.has_target || v == APRS_UNK)
-		sprintf(d, "%s ---", lab);
+		sprintf(s, "%s ---", lab);
 	else
-		sprintf(d, "%s %u", lab, v);
+		sprintf(s, "%s %u", lab, v);
+	UI_PrintStringSmallAtPixel(s, x, 0, ys, ye, 0u);
+	if (gAprs.has_target && v != APRS_UNK) {
+		const uint8_t dx = (uint8_t)(x + (uint8_t)UI_SmallStringPixelWidth(s) + 1u);
+#ifdef ENABLE_CHINESE
+		draw_degree(dx, UI_SmallLatinPixelY(ys, ye, false, 0u));
+#else
+		draw_degree(dx, ys);
+#endif
+	}
+}
+
+static void put_deg_row(const char *lab, uint16_t v, uint8_t i)
+{
+	uint8_t ys, ye;
+
+	row_band(i, &ys, &ye);
+	put_deg_xy(lab, v, APRS_TX, ys, ye);
+}
+
+/* DATE in the same small font as BRG/SPD; YYYY-MM-DD is too wide, so 3x5 digits. */
+static void print_3x5(const char *s, uint8_t x, uint8_t y)
+{
+	while (*s) {
+		uint8_t c = (uint8_t)*s++;
+		uint8_t i, j;
+
+		if (c < 0x20u || c > 0x7Fu)
+			c = (uint8_t)'?';
+		c = (uint8_t)(c - 0x20u);
+		for (i = 0; i < 3u; i++) {
+			uint8_t pixels = gFont3x5[c][i];
+
+			for (j = 0; j < 6u; j++) {
+				if ((pixels & 1u) && ((uint16_t)x + i) < LCD_WIDTH && ((uint16_t)y + j) < APRS_H)
+					gFrameBuffer[(y + j) >> 3][x + i] |= (uint8_t)(1u << ((y + j) & 7));
+				pixels >>= 1;
+			}
+		}
+		if (x > LCD_WIDTH - 4u)
+			break;
+		x = (uint8_t)(x + 4u);
+	}
+}
+
+static void put_date_row(void)
+{
+	uint8_t ys, ye, x, y;
+	char val[12];
+
+	row_band(4, &ys, &ye);
+	UI_PrintStringSmallAtPixel("DATE", APRS_TX, 0, ys, ye, 0u);
+
+	if (!gAprs.has_target || gAprs.year < 2000u || gAprs.month < 1u || gAprs.month > 12u
+	    || gAprs.day < 1u || gAprs.day > 31u)
+		strcpy(val, "---");
+	else
+		sprintf(val, "%04u-%02u-%02u", gAprs.year, gAprs.month, gAprs.day);
+
+	x = (uint8_t)(APRS_TX + (uint8_t)UI_SmallStringPixelWidth("DATE") + 7u);
+#ifdef ENABLE_CHINESE
+	y = UI_SmallLatinPixelY(ys, ye, false, 0u);
+#else
+	y = ys;
+#endif
+	print_3x5(val, x, y);
 }
 
 static void radar_page(void)
@@ -264,9 +398,17 @@ static void radar_page(void)
 	if (UI_SmallStringPixelWidth(s) > (LCD_WIDTH - APRS_TX))
 		strcpy(s, cs);
 	put_row(s, 0);
+	{
+		uint8_t ys, ye, x0, x1;
+		const uint8_t tw = (uint8_t)UI_SmallStringPixelWidth(s);
 
-	fmt_deg(s, "BRG ", gAprs.bearing_deg);
-	put_row(s, 1);
+		row_band(0, &ys, &ye);
+		x0 = (APRS_TX > 0u) ? (uint8_t)(APRS_TX - 1u) : 0u;
+		x1 = (uint8_t)(APRS_TX + tw + 1u);
+		invert_rect(x0, x1, ys, ye);
+	}
+
+	put_deg_row("BRG ", gAprs.bearing_deg, 1);
 
 	if (!gAprs.has_target || gAprs.distance_m == APRS_UNK)
 		strcpy(s, "DIST ---");
@@ -277,50 +419,52 @@ static void radar_page(void)
 	put_row(s, 2);
 
 	if (!gAprs.has_target || gAprs.speed_kmh == APRS_UNK)
-		strcpy(s, "SPD  ---");
+		strcpy(s, "SPD ---");
 	else if (gAprs.speed_kmh >= 1000u)
-		strcpy(s, "SPD  999+");
+		strcpy(s, "SPD 999+");
 	else
-		sprintf(s, "SPD  %u", gAprs.speed_kmh);
+		sprintf(s, "SPD %ukm/h", gAprs.speed_kmh);
 	put_row(s, 3);
 
-	fmt_deg(s, "CSE ", gAprs.course_deg);
-	put_row(s, 4);
+	put_date_row();
 }
 
-static void comment_page(void)
+static uint8_t utf8_step(const char *p)
+{
+	const uint8_t c = (uint8_t)*p;
+
+	return (c < 0x80u) ? 1u : ((c < 0xE0u) ? 2u : ((c < 0xF0u) ? 3u : 4u));
+}
+
+static uint8_t wrap_comment(char out[][APRS_CMT_LINE], uint8_t max_lines)
 {
 	const char *p = gAprs.comment[0] ? gAprs.comment : "---";
-	char line[22];
-	uint8_t row = 0, n = 0;
+	char line[APRS_CMT_LINE];
+	uint8_t n = 0, nrows = 0;
 
 	line[0] = '\0';
-	while (*p && row < 4u) {
-		const uint8_t c = (uint8_t)*p;
-		const uint8_t step = (c < 0x80u) ? 1u : ((c < 0xE0u) ? 2u : ((c < 0xF0u) ? 3u : 4u));
-		uint8_t wrap = (*p == '\n') || (n + step >= 21u);
+	while (*p && nrows < max_lines) {
+		const uint8_t step = utf8_step(p);
+		uint8_t wrap = (*p == '\n') || ((uint8_t)(n + step) >= (APRS_CMT_LINE - 1u));
 
 		if (!wrap && n) {
 			memcpy(line + n, p, step);
 			line[n + step] = '\0';
-			wrap = UI_SmallStringPixelWidth(line) > 124u;
+			wrap = UI_SmallStringPixelWidth(line) > APRS_CMT_W;
 			line[n] = '\0';
 		}
 		if (wrap) {
 			if (*p == '\n')
 				p++;
 			if (line[0]) {
-				UI_PrintStringSmallAtPixel(line, 2, 0, (uint8_t)(4u + row * 12u),
-				                           (uint8_t)(15u + row * 12u), 0u);
-				row++;
+				memcpy(out[nrows], line, (size_t)n + 1u);
+				nrows++;
 				n = 0;
 				line[0] = '\0';
 				continue;
 			}
-			/* Empty line but still wrapping: skip one codepoint to avoid spin. */
 			if (*p && *p != '\n')
 				p += step;
-			row++;
 			continue;
 		}
 		memcpy(line + n, p, step);
@@ -328,18 +472,131 @@ static void comment_page(void)
 		line[n] = '\0';
 		p += step;
 	}
-	if (row < 4u && line[0])
-		UI_PrintStringSmallAtPixel(line, 2, 0, (uint8_t)(4u + row * 12u),
-		                           (uint8_t)(15u + row * 12u), 0u);
+	if (nrows < max_lines && line[0]) {
+		memcpy(out[nrows], line, (size_t)n + 1u);
+		nrows++;
+	}
+	if (!nrows) {
+		strcpy(out[0], "---");
+		nrows = 1;
+	}
+	return nrows;
+}
+
+static void comment_refresh(void)
+{
+	sCmtN = wrap_comment(sCmt, APRS_CMT_MAX);
+}
+
+static uint8_t comment_fit(uint8_t y0, uint8_t y1)
+{
+	uint16_t area;
+	const uint8_t stride = (uint8_t)(APRS_CMT_H + APRS_CMT_GAP);
+
+	if (y1 < y0)
+		return 0;
+	area = (uint16_t)y1 - (uint16_t)y0 + 1u;
+	return (uint8_t)((area + APRS_CMT_GAP) / stride);
+}
+
+static uint8_t comment_p2_y0(void)
+{
+	uint8_t ys, ye;
+
+	row_band(1, &ys, &ye);
+	return (uint8_t)(ye + 1u);
+}
+
+static uint8_t comment_y1(void)
+{
+	return (uint8_t)(APRS_H - APRS_IND_H - 1u);
+}
+
+static uint8_t aprs_page_count(void)
+{
+	comment_refresh();
+	return (sCmtN > comment_fit(comment_p2_y0(), comment_y1())) ? 3u : 2u;
+}
+
+static void draw_page_index(void)
+{
+	char s[8];
+	const uint8_t np = aprs_page_count();
+	uint8_t cur = (uint8_t)(sPage + 1u);
+
+	if (!np)
+		return;
+	if (cur > np)
+		cur = np;
+	sprintf(s, "%u/%u", cur, np);
+	print_3x5(s, 1u, (uint8_t)(APRS_H - APRS_IND_H));
+}
+
+static void draw_comment_block(uint8_t start, uint8_t n, uint8_t y0, uint8_t y1)
+{
+	uint8_t i, y = y0;
+	const uint8_t fit = comment_fit(y0, y1);
+
+	if (!n || y1 < y0)
+		return;
+	if (n > fit)
+		n = fit;
+	for (i = 0; i < n; i++) {
+		uint8_t ye = (uint8_t)(y + APRS_CMT_H - 1u);
+
+		if (ye > y1)
+			ye = y1;
+		if (sCmt[start + i][0])
+			UI_PrintStringSmallAtPixel(sCmt[start + i], 2, 0, y, ye, 0u);
+		y = (uint8_t)(y + APRS_CMT_H + APRS_CMT_GAP);
+		if (y > y1)
+			break;
+	}
+}
+
+static void detail_page(void)
+{
+	char s[24];
+	uint8_t ys, ye, take;
+
+	comment_refresh();
+
+	row_band(0, &ys, &ye);
+	put_deg_xy("CSE ", gAprs.course_deg, 2, ys, ye);
+
+	row_band(1, &ys, &ye);
+	if (!gAprs.has_target || gAprs.altitude_m == APRS_ALT_UNK)
+		strcpy(s, "ALT  ---");
+	else
+		sprintf(s, "ALT  %dm", (int)gAprs.altitude_m);
+	UI_PrintStringSmallAtPixel(s, 2, 0, ys, ye, 0u);
+
+	take = comment_fit((uint8_t)(ye + 1u), comment_y1());
+	if (take > sCmtN)
+		take = sCmtN;
+	draw_comment_block(0, take, (uint8_t)(ye + 1u), comment_y1());
+}
+
+static void comment_page(void)
+{
+	const uint8_t p2 = comment_fit(comment_p2_y0(), comment_y1());
+
+	comment_refresh();
+	if (sCmtN > p2)
+		draw_comment_block(p2, (uint8_t)(sCmtN - p2),
+		                  APRS_RIGHT_YOFF, comment_y1());
 }
 
 void UI_DisplayAprs(void)
 {
 	UI_DisplayClear();
-	if (sPage)
-		comment_page();
-	else
+	if (sPage == 0u)
 		radar_page();
+	else if (sPage == 1u)
+		detail_page();
+	else
+		comment_page();
+	draw_page_index();
 	UI_BlitFullScreen();
 }
 
@@ -365,7 +622,19 @@ void APRS_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 		return;
 	}
 	if ((Key == KEY_UP || Key == KEY_DOWN) && tap) {
-		sPage ^= 1u;
+		const uint8_t np = aprs_page_count();
+		int8_t dir = (Key == KEY_UP) ? 1 : -1;
+
+		/* SET_NAV=0: UV-K1 left/right layout — invert like MAIN/FM/aircraft */
+		if (!gEeprom.SET_NAV)
+			dir = (int8_t)(-dir);
+
+		if (sPage >= np)
+			sPage = 0;
+		if (dir > 0)
+			sPage = (uint8_t)((sPage + 1u) % np);
+		else
+			sPage = (uint8_t)((sPage + np - 1u) % np);
 		gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
 		gUpdateDisplay = true;
 		return;

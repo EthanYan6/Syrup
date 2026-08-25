@@ -670,7 +670,7 @@ window.SyrupSerial = {
   },
   /**
    * APRS target for the radio LCD. Command 0x0542 (0x0543 ACK).
-   * @param {{callsign:string, bearing?:number, distanceM:number, course?:number, speedKmh?:number, comment?:string, openPage?:boolean}} target
+   * @param {{callsign:string, bearing?:number, distanceM:number, course?:number, speedKmh?:number, lasttime?:number, altitudeM?:number, comment?:string, openPage?:boolean}} target
    */
   pushAprs: async function (target) {
     if (!writer) {
@@ -682,7 +682,7 @@ window.SyrupSerial = {
     if (target && target.comment) {
       commentBytes = new TextEncoder().encode(String(target.comment)).slice(0, 80);
     }
-    const dataLen = 19 + commentBytes.length;
+    const dataLen = 25 + commentBytes.length;
     const msg = createMessage(MSG_APRS, dataLen);
     const v = new DataView(msg.buffer);
     for (let i = 0; i < 10; i++) {
@@ -712,8 +712,27 @@ window.SyrupSerial = {
     let flags = 0;
     if (target && target.openPage) flags |= 2;
     msg[22] = flags;
+    let year = 0;
+    let month = 0;
+    let day = 0;
+    if (target && typeof target.lasttime === 'number' && isFinite(target.lasttime) && target.lasttime > 0) {
+      const d = new Date(target.lasttime * 1000);
+      if (!isNaN(d.getTime())) {
+        year = d.getFullYear();
+        month = d.getMonth() + 1;
+        day = d.getDate();
+      }
+    }
+    let alt = -32768;
+    if (target && typeof target.altitudeM === 'number' && isFinite(target.altitudeM)) {
+      alt = Math.max(-32767, Math.min(32766, Math.round(target.altitudeM)));
+    }
+    v.setUint16(23, year, true);
+    msg[25] = month;
+    msg[26] = day;
+    v.setInt16(27, alt, true);
     if (commentBytes.length) {
-      msg.set(commentBytes, 23);
+      msg.set(commentBytes, 29);
     }
     await sendMessage(msg);
   }

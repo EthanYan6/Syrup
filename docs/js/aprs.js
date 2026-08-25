@@ -190,6 +190,18 @@
     return tr('aprsHeardDays', { n: Math.floor(sec / 86400) });
   }
 
+  function pad2(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  function formatPublished(unix) {
+    if (unix == null || !isFinite(unix)) return '—';
+    var d = new Date(unix * 1000);
+    if (isNaN(d.getTime())) return '—';
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
+      ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+  }
+
   function typeLabel(type) {
     var key = {
       l: 'aprsTypeStation',
@@ -236,6 +248,7 @@
       aprsFieldDist: formatDist(st.distanceKm),
       aprsFieldBrg: formatCourse(st.bearing),
       aprsFieldHeard: formatHeard(st.lasttime),
+      aprsFieldPublished: formatPublished(st.lasttime),
       aprsFieldPath: st.path || '—'
     };
     Object.keys(map).forEach(function (id) {
@@ -301,6 +314,8 @@
       distanceM: distM,
       course: (st && typeof st.course === 'number' && isFinite(st.course)) ? Math.round(st.course) : -1,
       speedKmh: (st && typeof st.speedKmh === 'number' && isFinite(st.speedKmh)) ? Math.round(st.speedKmh) : -1,
+      lasttime: (st && typeof st.lasttime === 'number' && isFinite(st.lasttime)) ? st.lasttime : 0,
+      altitudeM: (st && typeof st.alt === 'number' && isFinite(st.alt)) ? Math.round(st.alt) : null,
       comment: (st && st.comment) ? String(st.comment) : '',
       openPage: true
     }).then(function () {
