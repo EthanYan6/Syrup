@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260824aprsdetail2">
+  <link rel="stylesheet" href="css/style.css?v=20260825chips">
   <script src="//cdn.busuanzi.cc/busuanzi/3.6.9/busuanzi.min.js" defer></script>
 </head>
 <body>
@@ -99,13 +99,22 @@
     </div>
   </div>
 
-  <div class="subtitle-chips" aria-label="社交平台账号">
+  <div class="subtitle-chips" id="subtitleChips" aria-label="社交平台账号">
+    <div class="subtitle-chips-header">
+      <span class="subtitle-chips-title" data-i18n="mediaAccount">BD1AHN媒体账号</span>
+      <button class="subtitle-chips-toggle" id="subtitleChipsToggle" type="button" aria-label="收起" title="收起" data-i18n-title="collapseChips" data-i18n-aria="collapseChips">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+    </div>
+    <div class="subtitle-chips-body" id="subtitleChipsBody">
     <span class="subtitle-chip subtitle-chip--douyin" data-i18n-title="douyinChipTitle" title="抖音 · 小闫连不上">
       <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 3v9.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
       </svg>
       <span class="subtitle-chip-label" data-i18n="douyin">抖音</span>
-      <span class="subtitle-chip-name">小闫连不上</span>
+      <span class="subtitle-chip-name" data-i18n="douyinName">小闫连不上</span>
     </span>
     <span class="subtitle-chip subtitle-chip--bili" data-i18n-title="biliChipTitle" title="哔哩哔哩 · 小闫连不上">
       <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -114,7 +123,7 @@
         <path d="M9.5 15h5"/>
       </svg>
       <span class="subtitle-chip-label" data-i18n="bili">B站</span>
-      <span class="subtitle-chip-name">小闫连不上</span>
+      <span class="subtitle-chip-name" data-i18n="biliName">小闫连不上</span>
     </span>
     <span class="subtitle-chip subtitle-chip--redbook" data-i18n-title="redbookChipTitle" title="小红书 · 小闫同学">
       <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -123,7 +132,7 @@
         <path d="M8 7h8M8 11h6"/>
       </svg>
       <span class="subtitle-chip-label" data-i18n="redbook">小红书</span>
-      <span class="subtitle-chip-name">小闫同学</span>
+      <span class="subtitle-chip-name" data-i18n="redbookName">小闫同学</span>
     </span>
     <span class="subtitle-chip subtitle-chip--weixin" data-i18n-title="wechatVideoChipTitle" title="微信视频号 · 小闫连不上">
       <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -131,13 +140,33 @@
         <path d="M10 9.5L15 12l-5 2.5V9.5z" fill="currentColor" stroke="none"/>
       </svg>
       <span class="subtitle-chip-label" data-i18n="wechatVideo">微信视频号</span>
-      <span class="subtitle-chip-name">小闫连不上</span>
+      <span class="subtitle-chip-name" data-i18n="wechatVideoName">小闫连不上</span>
     </span>
     <a href="https://ethanyan6.github.io/fmo-show/" class="subtitle-chip subtitle-chip--fmo" title="FMO副屏 · 点击查看" aria-label="FMO副屏，点击查看" target="_blank" rel="noopener noreferrer">
       <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
       </svg>
       <span class="subtitle-chip-label" data-i18n="fmoScreen">FMO副屏</span>
+      <span class="subtitle-chip-name" data-i18n="clickView">点击查看</span>
+    </a>
+    <a href="https://ethanyan6.github.io/hand_drawn_map/" class="subtitle-chip subtitle-chip--travel" title="旅行手账 · 点击查看" aria-label="旅行手账，点击查看" target="_blank" rel="noopener noreferrer">
+      <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
+        <line x1="9" y1="3" x2="9" y2="18"/>
+        <line x1="15" y1="6" x2="15" y2="21"/>
+      </svg>
+      <span class="subtitle-chip-label" data-i18n="travelJournal">旅行手账</span>
+      <span class="subtitle-chip-name" data-i18n="clickView">点击查看</span>
+    </a>
+    <a href="https://ethanyan6.github.io/dagojo/" class="subtitle-chip subtitle-chip--dagojo" title="自驾游大屏 · 点击查看" aria-label="自驾游大屏，点击查看" target="_blank" rel="noopener noreferrer">
+      <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8"/>
+        <path d="M12 17v4"/>
+        <circle cx="8.5" cy="10" r="1.5" fill="currentColor" stroke="none"/>
+        <path d="M12 8h5v4h-5z"/>
+      </svg>
+      <span class="subtitle-chip-label" data-i18n="drivingHud">自驾游大屏</span>
       <span class="subtitle-chip-name" data-i18n="clickView">点击查看</span>
     </a>
     <a href="wechat-group.html" class="subtitle-chip subtitle-chip--weixin subtitle-chip--wechat-group" title="微信群 · 点击查看二维码" aria-label="微信群，点击查看二维码">
@@ -150,6 +179,16 @@
       <span class="subtitle-chip-label" data-i18n="wechatGroup">微信群</span>
       <span class="subtitle-chip-name" data-i18n="clickView">点击查看</span>
     </a>
+    <a href="https://ethanyan6.github.io/Mangosteen/" class="subtitle-chip subtitle-chip--mangosteen" title="其它固件 · 山竹" aria-label="其它固件，山竹" target="_blank" rel="noopener noreferrer">
+      <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2c2.5 2 4 4.5 4 7.2 0 2.2-1.2 4-3 5.1V17H11v-2.7c-1.8-1.1-3-2.9-3-5.1C8 6.5 9.5 4 12 2z"/>
+        <path d="M9 17h6v2a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-2z"/>
+        <circle cx="10.2" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+        <circle cx="13.8" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+      </svg>
+      <span class="subtitle-chip-label" data-i18n="otherFirmwareLink">其它固件</span>
+      <span class="subtitle-chip-name" data-i18n="mangosteenFirmwareName">山竹</span>
+    </a>
     <a href="https://ethanyan6.github.io/Dondji/" class="subtitle-chip subtitle-chip--dondji" title="其它固件 · 叮咚鸡" aria-label="其它固件，叮咚鸡" target="_blank" rel="noopener noreferrer">
       <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 2c2.5 2 4 4.5 4 7.2 0 2.2-1.2 4-3 5.1V17H11v-2.7c-1.8-1.1-3-2.9-3-5.1C8 6.5 9.5 4 12 2z"/>
@@ -157,9 +196,40 @@
         <circle cx="10.2" cy="9" r="0.8" fill="currentColor" stroke="none"/>
         <circle cx="13.8" cy="9" r="0.8" fill="currentColor" stroke="none"/>
       </svg>
-      <span class="subtitle-chip-label" data-i18n="otherFirmware">其它固件</span>
+      <span class="subtitle-chip-label" data-i18n="otherFirmwareLink">其它固件</span>
       <span class="subtitle-chip-name" data-i18n="otherFirmwareName">叮咚鸡</span>
     </a>
+    <a href="https://ethanyan6.github.io/uv-k1-k5-v3-game-web/" class="subtitle-chip subtitle-chip--gamefw" title="其它固件 · 游戏固件" aria-label="其它固件，游戏固件" target="_blank" rel="noopener noreferrer">
+      <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2c2.5 2 4 4.5 4 7.2 0 2.2-1.2 4-3 5.1V17H11v-2.7c-1.8-1.1-3-2.9-3-5.1C8 6.5 9.5 4 12 2z"/>
+        <path d="M9 17h6v2a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-2z"/>
+        <circle cx="10.2" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+        <circle cx="13.8" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+      </svg>
+      <span class="subtitle-chip-label" data-i18n="otherFirmwareLink">其它固件</span>
+      <span class="subtitle-chip-name" data-i18n="gameFirmwareName">游戏固件</span>
+    </a>
+    <a href="https://ethanyan6.github.io/uv-k1-k6v3-multi-system-web/" class="subtitle-chip subtitle-chip--multisys" title="刷机工具 · 多固件刷机工具" aria-label="刷机工具，多固件刷机工具" target="_blank" rel="noopener noreferrer">
+      <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2c2.5 2 4 4.5 4 7.2 0 2.2-1.2 4-3 5.1V17H11v-2.7c-1.8-1.1-3-2.9-3-5.1C8 6.5 9.5 4 12 2z"/>
+        <path d="M9 17h6v2a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-2z"/>
+        <circle cx="10.2" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+        <circle cx="13.8" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+      </svg>
+      <span class="subtitle-chip-label" data-i18n="flashToolLink">刷机工具</span>
+      <span class="subtitle-chip-name" data-i18n="multiFirmwareToolName">多固件刷机工具</span>
+    </a>
+    <a href="https://www.yuque.com/yanyuliang/radio/wpiyfs070wcfr55s?singleDoc#" class="subtitle-chip subtitle-chip--yuque" title="其它固件合集" aria-label="其它固件合集" target="_blank" rel="noopener noreferrer">
+      <svg class="subtitle-icon" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M19.666 2H5.333C4.597 2 4 2.597 4 3.333v16.334c0 .736.597 1.333 1.333 1.333h14.333c.737 0 1.334-.597 1.334-1.333V3.333C21 2.597 20.403 2 19.666 2zm-2 15.333H6.333V4.667h11.333v12.666z"/>
+        <path d="M8.666 7.333h6.667v1.334H8.667V7.333zm0 4h6.667v1.334H8.667v-1.334zm0 4h4v1.334h-4v-1.334z" fill="#00C65D"/>
+        <path d="M17.333 6H6.667v13.333h10.666V6z" fill="none" stroke="#00C65D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="subtitle-chip-label" data-i18n="otherFirmware">其它固件合集</span>
+      <span class="subtitle-chip-name" data-i18n="clickView">点击查看</span>
+    </a>
+    </div>
+    <div class="subtitle-chips-collapsed" id="subtitleChipsCollapsed" data-i18n="mediaAccount" role="button" tabindex="0" title="展开" data-i18n-title="expandChips" data-i18n-aria="expandChips">BD1AHN媒体账号</div>
   </div>
 
   <div class="page-layout">
@@ -666,7 +736,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/min/lang.js?v=20260824aprs3"></script>
+  <script src="js/min/lang.js?v=20260825chips"></script>
   <script src="js/min/gb2312_codec.js?v=20260824obf"></script>
   <script src="js/min/flash.js?v=20260824aprs3"></script>
   <script src="js/min/airline_icao.js?v=20260824obf"></script>
@@ -750,6 +820,28 @@
     coffeeBackdrop.addEventListener('click', closeCoffeeModal);
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape' && !coffeeModal.hidden) closeCoffeeModal();
+    });
+  })();
+
+  (function() {
+    var chips = document.getElementById('subtitleChips');
+    var toggleBtn = document.getElementById('subtitleChipsToggle');
+    var collapsedEl = document.getElementById('subtitleChipsCollapsed');
+    if (!chips || !toggleBtn || !collapsedEl) return;
+
+    toggleBtn.addEventListener('click', function() {
+      chips.classList.add('collapsed');
+    });
+
+    collapsedEl.addEventListener('click', function() {
+      chips.classList.remove('collapsed');
+    });
+
+    collapsedEl.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        chips.classList.remove('collapsed');
+      }
     });
   })();
   </script>
