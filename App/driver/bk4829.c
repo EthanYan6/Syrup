@@ -20,12 +20,19 @@
 
 #include "settings.h"
 #include "misc.h"
+#include "functions.h"
 
 #include "audio.h"
+
+#ifdef ENABLE_FMRADIO
+#include "app/fm.h"
+#include "driver/bk1080.h"
+#endif
 
 #include "driver/bk4819.h"
 #include "app/yan_id_rf.h"
 #include "driver/gpio.h"
+#include "radio.h"
 #include "driver/system.h"
 #include "driver/systick.h"
 
@@ -1760,7 +1767,152 @@ void BK4819_PrepareFSKReceive(void)
     BK4819_WriteRegister(BK4819_REG_59, 0x3068);
 }
 
-static void BK4819_PlayRogerNormal(BK4819_FilterBandwidth_t Bandwidth)
+static void BK4819_SetToneFrequency(uint16_t Frequency)
+{
+    BK4819_WriteRegister(BK4819_REG_71, scale_freq(Frequency));
+}
+
+void BK4819_PlayRogerMDC(void);
+
+static void BK4819_PlaySequenceLoop(const uint16_t *Sequence, bool localPlayback)
+{
+    bool initialTone = true;
+
+    for (uint8_t i = 0; i < 255; i += 2) {
+        const uint16_t note = Sequence[i];
+        const uint16_t durationMs = Sequence[i + 1];
+
+        if (!note && !durationMs)
+            break;
+
+        if (note) {
+            if (initialTone) {
+                initialTone = false;
+                BK4819_TransmitTone(localPlayback, note);
+            } else {
+                BK4819_SetToneFrequency(note);
+                BK4819_ExitTxMute();
+            }
+        } else {
+            BK4819_EnterTxMute();
+        }
+
+        if (note && !durationMs)
+            return;
+
+        SYSTEM_DelayMs(durationMs);
+    }
+
+    BK4819_EnterTxMute();
+}
+
+static void BK4819_PlaySequence(const uint16_t *Sequence)
+{
+    BK4819_PlaySequenceLoop(Sequence, false);
+}
+
+typedef struct {
+    bool     speakerWasOn;
+    uint16_t toneConfig;
+#ifdef ENABLE_FMRADIO
+    bool     fmRadioMode;
+#endif
+} RogerPreviewCtx_t;
+
+static void BK4819_RogerPreviewBegin(RogerPreviewCtx_t *ctx)
+{
+    ctx->speakerWasOn = gEnableSpeaker;
+    ctx->toneConfig = BK4819_ReadRegister(BK4819_REG_71);
+#ifdef ENABLE_FMRADIO
+    ctx->fmRadioMode = gFmRadioMode;
+    if (ctx->fmRadioMode)
+        BK1080_Mute(true);
+#endif
+    if (gCurrentFunction == FUNCTION_POWER_SAVE && gRxIdleMode)
+        BK4819_RX_TurnOn();
+    AUDIO_AudioPathOn();
+    gEnableSpeaker = true;
+}
+
+static void BK4819_RogerPreviewEnd(const RogerPreviewCtx_t *ctx)
+{
+    AUDIO_AudioPathOff();
+    gEnableSpeaker = ctx->speakerWasOn;
+    SYSTEM_DelayMs(5);
+    BK4819_TurnsOffTones_TurnsOnRX();
+    SYSTEM_DelayMs(5);
+    BK4819_WriteRegister(BK4819_REG_71, ctx->toneConfig);
+    if (ctx->speakerWasOn)
+        AUDIO_AudioPathOn();
+#ifdef ENABLE_FMRADIO
+    if (ctx->fmRadioMode) {
+        SYSTEM_DelayMs(10);
+        BK1080_Mute(false);
+    }
+#endif
+    RADIO_SetupRegisters(false);
+}
+
+static void BK4819_PlaySequencePreview(const uint16_t *Sequence)
+{
+    RogerPreviewCtx_t ctx;
+
+    BK4819_RogerPreviewBegin(&ctx);
+    BK4819_PlaySequenceLoop(Sequence, true);
+    BK4819_RogerPreviewEnd(&ctx);
+}
+
+static const uint16_t gRogerSeq_Stalk1[] = {
+    1975, 80, 0, 10, 2100, 100, 0, 10, 3140, 80,
+    0, 10, 2800, 100, 0, 10, 0, 0
+};
+
+static const uint16_t gRogerSeq_Custom2[] = {
+    430, 350, 0, 350, 430, 350, 0, 350, 430, 350, 0, 0
+};
+
+/* Single ribbit: sharp mid-high drop. */
+static const uint16_t gRogerSeq_Custom3[] = {
+    1650, 40, 1100, 50, 750, 65, 0, 0
+};
+
+static const uint16_t *BK4819_RogerSequenceForMode(ROGER_Mode_t mode)
+{
+    switch (mode) {
+    case ROGER_MODE_STALK1:
+        return gRogerSeq_Stalk1;
+    case ROGER_MODE_CUSTOM2:
+        return gRogerSeq_Custom2;
+    case ROGER_MODE_CUSTOM3:
+        return gRogerSeq_Custom3;
+    default:
+        return NULL;
+    }
+}
+
+static void BK4819_PlayRogerMDCPreview(void)
+{
+    RogerPreviewCtx_t ctx;
+
+    BK4819_RogerPreviewBegin(&ctx);
+    BK4819_SetAF(BK4819_AF_BEEP);
+    BK4819_PlayRogerMDC();
+    BK4819_SetAF(BK4819_AF_MUTE);
+    BK4819_RogerPreviewEnd(&ctx);
+}
+
+static BK4819_FilterBandwidth_t BK4819_RogerBandwidth(void)
+{
+    BK4819_FilterBandwidth_t bw = gTxVfo->CHANNEL_BANDWIDTH;
+
+#ifdef ENABLE_FEAT_F4HWN_NARROWER
+    if (bw == BK4819_FILTER_BW_NARROW && gSetting_set_nfm == 1)
+        bw = BK4819_FILTER_BW_NARROWER;
+#endif
+    return bw;
+}
+
+static void BK4819_PlayRogerNormal(BK4819_FilterBandwidth_t Bandwidth, bool localPlayback)
 {
     #if 0
         const uint32_t tone1_Hz = 500;
@@ -1773,7 +1925,7 @@ static void BK4819_PlayRogerNormal(BK4819_FilterBandwidth_t Bandwidth)
 
 
     BK4819_EnterTxMute();
-    BK4819_SetAF(BK4819_AF_MUTE);
+    BK4819_SetAF(localPlayback ? BK4819_AF_BEEP : BK4819_AF_MUTE);
 
     const uint8_t rogerToneGain = (Bandwidth == BK4819_FILTER_BW_WIDE) ? 32u : 67u;
 
@@ -1855,11 +2007,59 @@ void BK4819_PlayRogerMDC(void)
 void BK4819_PlayRoger(BK4819_FilterBandwidth_t Bandwidth)
 {
     if (gEeprom.ROGER == ROGER_MODE_ROGER) {
-        BK4819_PlayRogerNormal(Bandwidth);
+        BK4819_PlayRogerNormal(Bandwidth, false);
     } else if (gEeprom.ROGER == ROGER_MODE_MDC) {
         BK4819_PlayRogerMDC();
     } else if (gEeprom.ROGER == ROGER_MODE_YAN_ID) {
         (void)YAN_RF_Send();
+    } else {
+        const uint16_t *seq = BK4819_RogerSequenceForMode(gEeprom.ROGER);
+
+        if (seq != NULL)
+            BK4819_PlaySequence(seq);
+    }
+}
+
+void BK4819_PlayRogerPreview(uint8_t mode)
+{
+    switch ((ROGER_Mode_t)mode) {
+    case ROGER_MODE_OFF:
+        break;
+    case ROGER_MODE_ROGER:
+        {
+            RogerPreviewCtx_t ctx;
+
+            BK4819_RogerPreviewBegin(&ctx);
+            BK4819_PlayRogerNormal(BK4819_RogerBandwidth(), true);
+            BK4819_RogerPreviewEnd(&ctx);
+        }
+        break;
+    case ROGER_MODE_MDC:
+        BK4819_PlayRogerMDCPreview();
+        break;
+    case ROGER_MODE_YAN_ID:
+        if (gEeprom.yan_id[0] != 0) {
+            RogerPreviewCtx_t ctx;
+
+            BK4819_RogerPreviewBegin(&ctx);
+            BK4819_SetAF(BK4819_AF_BEEP);
+            (void)YAN_RF_Send();
+            BK4819_SetAF(BK4819_AF_MUTE);
+            BK4819_RogerPreviewEnd(&ctx);
+        }
+        break;
+    case ROGER_MODE_STALK1:
+    case ROGER_MODE_CUSTOM2:
+    case ROGER_MODE_CUSTOM3:
+        {
+            const uint16_t *seq = BK4819_RogerSequenceForMode((ROGER_Mode_t)mode);
+
+            if (seq != NULL)
+                BK4819_PlaySequencePreview(seq);
+        }
+        break;
+    default:
+        break;
     }
 }
 

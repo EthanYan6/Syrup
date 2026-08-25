@@ -538,6 +538,10 @@ int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
             *pMax = ARRAY_SIZE(gSubMenu_ROGER) - 1;
             break;
 
+        case MENU_ROGER_PREVIEW:
+            *pMax = ARRAY_SIZE(gSubMenu_ROGER) - 1;
+            break;
+
         case MENU_YAN_ID:
             *pMax = 0;
             break;
@@ -1241,6 +1245,9 @@ void MENU_AcceptSetting(void)
             UI_MENU_BuildView();
             break;
 
+        case MENU_ROGER_PREVIEW:
+            break;
+
         case MENU_YAN_ID:
             if (edit_index >= 0)
                 MENU_SaveYanIdEdit();
@@ -1481,10 +1488,49 @@ void MENU_AcceptSetting(void)
     gRequestSaveSettings = true;
 }
 
+static const uint8_t gRogerPreviewModes[] = {
+    ROGER_MODE_OFF,
+    ROGER_MODE_ROGER,
+    ROGER_MODE_STALK1,
+    ROGER_MODE_CUSTOM2,
+    ROGER_MODE_CUSTOM3,
+};
+
+static uint8_t MENU_RogerPreviewModeCount(void)
+{
+    return (uint8_t)ARRAY_SIZE(gRogerPreviewModes);
+}
+
+static void MENU_NormalizeRogerPreviewSelection(void)
+{
+    for (uint8_t i = 0; i < MENU_RogerPreviewModeCount(); i++) {
+        if (gSubMenuSelection == gRogerPreviewModes[i])
+            return;
+    }
+
+    gSubMenuSelection = ROGER_MODE_ROGER;
+}
+
 static void MENU_ClampSelection(int8_t Direction)
 {
     int32_t Min;
     int32_t Max;
+
+    if (UI_MENU_GetCurrentMenuId() == MENU_ROGER_PREVIEW) {
+        const uint8_t count = MENU_RogerPreviewModeCount();
+        uint8_t idx = 0;
+
+        MENU_NormalizeRogerPreviewSelection();
+
+        for (; idx < count; idx++) {
+            if (gRogerPreviewModes[idx] == gSubMenuSelection)
+                break;
+        }
+
+        idx = (uint8_t)NUMBER_AddWithWraparound(idx, Direction, 0, count - 1);
+        gSubMenuSelection = gRogerPreviewModes[idx];
+        return;
+    }
 
 #ifdef ENABLE_FEAT_F4HWN
     const int sideMenuId = UI_MENU_GetCurrentMenuId();
@@ -1807,6 +1853,11 @@ void MENU_ShowCurrentSetting(void)
 
         case MENU_ROGER:
             gSubMenuSelection = gEeprom.ROGER;
+            break;
+
+        case MENU_ROGER_PREVIEW:
+            gSubMenuSelection = gEeprom.ROGER;
+            MENU_NormalizeRogerPreviewSelection();
             break;
 
         case MENU_YAN_ID_RX:
@@ -2668,7 +2719,14 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
     if (!bKeyPressed || (bKeyHeld && (!MENU_IsEditingName() || gAskForConfirmation)))
         return;
 #endif
-    
+
+    if (gIsInSubMenu && UI_MENU_GetCurrentMenuId() == MENU_ROGER_PREVIEW)
+    {
+        BK4819_PlayRogerPreview((uint8_t)gSubMenuSelection);
+        gRequestDisplayScreen = DISPLAY_MENU;
+        return;
+    }
+
     gBeepToPlay           = BEEP_1KHZ_60MS_OPTIONAL;
     gRequestDisplayScreen = DISPLAY_MENU;
 

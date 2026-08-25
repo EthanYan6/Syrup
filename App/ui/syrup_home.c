@@ -520,9 +520,13 @@ static void draw_channel_row(uint8_t vfo)
 		               (uint8_t)(LCD_WIDTH - SH_RIGHT_X_INSET - small_text_width(freq_str)),
 		               show_dtmf_input ? gDTMF_InputBox : gDTMF_RX_live);
 	} else {
-		/* row 2: modulation, power, squelch */
+		/* row 2: modulation, bandwidth, power, squelch */
 		x = 1u;
 		x = draw_param(gModulationStr[info->Modulation], x, param_y, true);
+		if (info->Modulation == MODULATION_FM) {
+			x = draw_param(info->CHANNEL_BANDWIDTH == BANDWIDTH_WIDE ? "W" : "N",
+			               x, param_y, true);
+		}
 		x = draw_param(power_letter(info->OUTPUT_POWER), x, param_y, true);
 		snprintf(String, sizeof(String), "%u", (unsigned)gEeprom.SQUELCH_LEVEL);
 		draw_param(String, x, param_y, true);

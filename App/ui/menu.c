@@ -116,6 +116,7 @@ const t_menu_item MenuList[] =
     {"Voice",       MENU_VOICE         },
 #endif
     {"Roger",       MENU_ROGER         },
+    {"RogPrv",      MENU_ROGER_PREVIEW },
     {"Yan ID",      MENU_YAN_ID        },
     {"Yan Rx",      MENU_YAN_ID_RX     },
     {"STE",         MENU_STE           },
@@ -332,7 +333,10 @@ const char* const gSubMenu_ROGER[] =
     "OFF",
     "ROGER",
     "MDC",
-    "Yan ID"
+    "Yan ID",
+    "Custom 1",
+    "Custom 2",
+    "Custom 3"
 };
 
 const char* const gSubMenu_RESET[] =
@@ -681,7 +685,7 @@ static const uint8_t CatAudio[]   = {
     MENU_SET_AUD,
 #endif
 };
-static const uint8_t CatRadio[]   = { MENU_SQL, MENU_STE, MENU_RP_STE, MENU_ROGER, MENU_YAN_ID, MENU_YAN_ID_RX, MENU_VOX, MENU_TDR };
+static const uint8_t CatRadio[]   = { MENU_SQL, MENU_STE, MENU_RP_STE, MENU_ROGER, MENU_ROGER_PREVIEW, MENU_YAN_ID, MENU_YAN_ID_RX, MENU_VOX, MENU_TDR };
 static const uint8_t CatDtmf[]    = { MENU_UPCODE, MENU_DWCODE, MENU_D_ST, MENU_D_PRE, MENU_D_LIVE_DEC };
 static const uint8_t CatService[] = { MENU_F_LOCK, MENU_350EN, MENU_BATCAL, MENU_BATTYP, MENU_SET_NAV, MENU_RESET };
 
@@ -977,6 +981,7 @@ static void UI_MENU_FormatValue(const int m, char *out, uint8_t out_len)
 			strcpy(out, SUBV(gSubMenu_PONMSG[gSubMenuSelection], gSubMenu_PONMSG_CN[gSubMenuSelection]));
 			break;
 		case MENU_ROGER:
+		case MENU_ROGER_PREVIEW:
 			strcpy(out, SUBV(gSubMenu_ROGER[gSubMenuSelection], gSubMenu_ROGER_CN[gSubMenuSelection]));
 			break;
 		case MENU_YAN_ID:
@@ -2078,6 +2083,7 @@ void UI_DisplayMenu(void)
         case MENU_BAT_TXT:
         case MENU_PONMSG:
         case MENU_ROGER:
+        case MENU_ROGER_PREVIEW:
         case MENU_YAN_ID_RX:
         case MENU_PTT_ID:
         case MENU_F_LOCK:

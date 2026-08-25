@@ -18,7 +18,7 @@ extern const char gSubMenu_D_RSP_CN[][11];
 
 extern const char *const gSubMenu_PTT_ID_CN[];
 extern const char *const gSubMenu_PONMSG_CN[];
-extern const char gSubMenu_ROGER_CN[][7];
+extern const char gSubMenu_ROGER_CN[][12]; /* 「自定义N」UTF-8 共 10 字节 + '\0' */
 extern const char gSubMenu_RESET_CN[][8];
 extern const char *const gSubMenu_F_LOCK_CN[];
 extern const char gSubMenu_RX_TX_CN[][16];
