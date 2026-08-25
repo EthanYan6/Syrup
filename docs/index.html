@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260825boot7">
+  <link rel="stylesheet" href="css/style.css?v=20260825materials">
   <script src="//cdn.busuanzi.cc/busuanzi/3.6.9/busuanzi.min.js" defer></script>
 </head>
 <body>
@@ -267,6 +267,7 @@
           <button class="tab" type="button" data-tab="basicinfo" id="tabBasicinfo" data-i18n="tabBasicinfo">基础信息</button>
           <button class="tab" type="button" data-tab="logo" id="tabLogo" data-i18n="tabLogo">开机图片</button>
           <button class="tab" type="button" data-tab="bootsound" id="tabBootSound" data-i18n="tabBootSound">开机音效</button>
+          <button class="tab" type="button" data-tab="materials" id="tabMaterials" data-i18n="tabMaterials">素材下载</button>
           <button class="tab" type="button" data-tab="radar" id="tabRadar" data-i18n="tabRadar">飞机雷达探测</button>
           <button class="tab" type="button" data-tab="aprs" id="tabAprs" data-i18n="tabAprs">APRS探测</button>
         </div>
@@ -670,6 +671,63 @@
           </div>
         </div>
 
+        <!-- MATERIALS DOWNLOAD -->
+        <div class="tab-content" id="materials-content">
+          <section class="section">
+            <p class="logo-desc" data-i18n="materialsHint">
+              下载后可到「开机图片」「开机音效」页上传到对讲机。图片会自动转成 128×64 单色；音频会转成约 5 秒 PCM。
+            </p>
+          </section>
+
+          <section class="section materials-section">
+            <h3 class="logo-section-title" data-i18n="materialsImagesTitle">开机图片</h3>
+            <div class="materials-image-grid">
+              <article class="materials-image-card">
+                <div class="materials-image-frame">
+                  <img src="materials/images/kun.jpg" alt="小黑子" width="128" height="64">
+                </div>
+                <h4 class="materials-card-name">小黑子</h4>
+                <a class="materials-dl" href="materials/images/kun.jpg" download="kun.jpg" data-i18n="materialsDownload">下载</a>
+              </article>
+              <article class="materials-image-card">
+                <div class="materials-image-frame">
+                  <img src="materials/images/nokia.png" alt="NOKIA" width="128" height="64">
+                </div>
+                <h4 class="materials-card-name">NOKIA</h4>
+                <a class="materials-dl" href="materials/images/nokia.png" download="NOKIA.png" data-i18n="materialsDownload">下载</a>
+              </article>
+              <article class="materials-image-card">
+                <div class="materials-image-frame">
+                  <img src="materials/images/moto.png" alt="MOTO" width="128" height="64">
+                </div>
+                <h4 class="materials-card-name">MOTO</h4>
+                <a class="materials-dl" href="materials/images/moto.png" download="MOTO.png" data-i18n="materialsDownload">下载</a>
+              </article>
+            </div>
+          </section>
+
+          <section class="section materials-section">
+            <h3 class="logo-section-title" data-i18n="materialsSoundsTitle">开机音效</h3>
+            <div class="materials-audio-list">
+              <article class="materials-audio-bar">
+                <span class="materials-card-name">NOKIA</span>
+                <audio controls preload="none" src="materials/sounds/nokia-ringtone.mp3"></audio>
+                <a class="materials-dl" href="materials/sounds/nokia-ringtone.mp3" download="nokia-ringtone.mp3" data-i18n="materialsDownload">下载</a>
+              </article>
+              <article class="materials-audio-bar">
+                <span class="materials-card-name">Hello Moto</span>
+                <audio controls preload="none" src="materials/sounds/hello_moto.mp3"></audio>
+                <a class="materials-dl" href="materials/sounds/hello_moto.mp3" download="hello_moto.mp3" data-i18n="materialsDownload">下载</a>
+              </article>
+              <article class="materials-audio-bar">
+                <span class="materials-card-name">小黑子</span>
+                <audio controls preload="none" src="materials/sounds/kun.mp3"></audio>
+                <a class="materials-dl" href="materials/sounds/kun.mp3" download="kun.mp3" data-i18n="materialsDownload">下载</a>
+              </article>
+            </div>
+          </section>
+        </div>
+
         <!-- APRS MAP (aprs.fi, web-only) -->
         <div class="tab-content" id="aprs-content">
           <section class="section radar-panel">
@@ -843,7 +901,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/min/lang.js?v=20260825boot7"></script>
+  <script src="js/min/lang.js?v=20260825materials"></script>
   <script src="js/min/gb2312_codec.js?v=20260824obf"></script>
   <script src="js/min/flash.js?v=20260825boot7"></script>
   <script src="js/min/airline_icao.js?v=20260824obf"></script>
@@ -949,6 +1007,17 @@
         e.preventDefault();
         chips.classList.remove('collapsed');
       }
+    });
+  })();
+
+  (function() {
+    var players = document.querySelectorAll('#materials-content audio');
+    players.forEach(function(player) {
+      player.addEventListener('play', function() {
+        players.forEach(function(other) {
+          if (other !== player) other.pause();
+        });
+      });
     });
   })();
   </script>
