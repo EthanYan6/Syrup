@@ -54,20 +54,20 @@ const char *const gSubMenu_PTT_ID_CN[] = {
     "APOLLO\nQUINDAR",
 };
 
-/* Order matches Syrup gSubMenu_PONMSG[] */
+/* Order matches gSubMenu_PONMSG[] (Mangosteen-style under F4HWN) */
 const char *const gSubMenu_PONMSG_CN[] = {
 #ifdef ENABLE_FEAT_F4HWN
-    "\xe5\x85\xa8\xe9\x83\xa8",         /* ALL */
-    "\xe5\xa3\xb0\xe9\x9f\xb3",         /* SOUND */
-#else
-    "\xe5\x85\xa8\xe5\xb1\x8f",         /* FULL */
-#endif
-    "\xe6\xb6\x88\xe6\x81\xaf",         /* MESSAGE */
-    "\xe7\x94\xb5\xe5\x8e\x8b",         /* VOLTAGE */
+    "\xe5\x85\xb3\xe9\x97\xad",                 /* NONE 关闭 */
+    "\xe9\xbb\x98\xe8\xae\xa4",                 /* DEFAULT 默认 */
 #ifdef ENABLE_FEAT_F4HWN_LOGO
-    "\xe5\x9b\xbe\xe6\xa0\x87",         /* LOGO */
+    "\xe8\x87\xaa\xe5\xae\x9a\xe4\xb9\x89",     /* LOGO 自定义 */
 #endif
-    "\xe6\x97\xa0",                     /* NONE */
+#else
+    "\xe5\x85\xa8\xe5\xb1\x8f",                 /* FULL */
+    "\xe6\xb6\x88\xe6\x81\xaf",                 /* MESSAGE */
+    "\xe7\x94\xb5\xe5\x8e\x8b",                 /* VOLTAGE */
+    "\xe6\x97\xa0",                             /* NONE */
+#endif
 };
 
 const char gSubMenu_ROGER_CN[][12] = {

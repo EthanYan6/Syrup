@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;700&family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260825chips">
+  <link rel="stylesheet" href="css/style.css?v=20260825boot7">
   <script src="//cdn.busuanzi.cc/busuanzi/3.6.9/busuanzi.min.js" defer></script>
 </head>
 <body>
@@ -265,6 +265,8 @@
           <button class="tab" type="button" data-tab="restore" id="tabRestore" data-i18n="tabRestore">恢复校准</button>
           <button class="tab" type="button" data-tab="writefreq" id="tabWritefreq" data-i18n="tabWritefreq">写频</button>
           <button class="tab" type="button" data-tab="basicinfo" id="tabBasicinfo" data-i18n="tabBasicinfo">基础信息</button>
+          <button class="tab" type="button" data-tab="logo" id="tabLogo" data-i18n="tabLogo">开机图片</button>
+          <button class="tab" type="button" data-tab="bootsound" id="tabBootSound" data-i18n="tabBootSound">开机音效</button>
           <button class="tab" type="button" data-tab="radar" id="tabRadar" data-i18n="tabRadar">飞机雷达探测</button>
           <button class="tab" type="button" data-tab="aprs" id="tabAprs" data-i18n="tabAprs">APRS探测</button>
         </div>
@@ -564,6 +566,110 @@
           </section>
         </div>
 
+        <!-- BOOT LOGO -->
+        <div class="tab-content" id="logo-content">
+          <section class="section">
+            <p class="logo-desc" data-i18n="logoDesc1">
+              上传自定义 128×64 开机图片到对讲机。支持 PNG、JPG、BMP 等格式，图片会自动缩放并转为单色位图。在菜单 POnMsg 中选择 Logo 即可显示。
+            </p>
+            <p class="logo-warning" data-i18n="logoWarning">
+              ⚠️ 请先<strong>正常开机进入使用界面</strong>后再连接 USB 操作（与刷字库、备份校准相同，无需 BOOT 模式）。
+            </p>
+          </section>
+
+          <section class="section">
+            <label data-i18n="selectImage">选择图片</label>
+            <div class="file-input-wrapper">
+              <input type="file" id="logoImageFile" accept="image/*" aria-label="选择开机图片">
+              <div class="file-input-label" id="logoImageFileLabel">
+                <span class="file-name" id="logoImageFileName" data-i18n="noFileSelected">未选择文件</span>
+                <span class="file-button" data-i18n="selectImage">选择图片</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="section logo-controls">
+            <div class="logo-controls-row">
+              <div>
+                <label for="logoThreshold" data-i18n="threshold">阈值</label>
+                <input type="range" id="logoThreshold" min="0" max="255" value="128">
+                <span id="logoThresholdValue">128</span>
+              </div>
+              <div>
+                <label data-i18n="invert">反色</label>
+                <label class="logo-invert-label">
+                  <input type="checkbox" id="logoInvert">
+                  <span data-i18n="invertBW">反转黑白</span>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <label data-i18n="preview">预览</label>
+            <div class="logo-preview-frame">
+              <canvas id="logoPreviewCanvas" width="128" height="64"></canvas>
+            </div>
+          </section>
+
+          <div class="logo-actions">
+            <button id="logoUploadBtn" disabled data-i18n="uploadLogo">上传开机图片</button>
+            <button id="logoReadBtn" data-i18n="readLogo">读取开机图片</button>
+          </div>
+          <div class="tab-progress" id="logoProgress" hidden>
+            <div class="progress-bar">
+              <div class="progress-fill" id="logoProgressFill"></div>
+              <div class="progress-label" id="logoProgressLabel">0%</div>
+            </div>
+          </div>
+          <div class="download-link" id="logoDownload" style="display:none;">
+            <a href="#" id="logoDownloadLink" download="boot_logo.png" data-i18n="downloadLogo">下载 boot_logo.png</a>
+          </div>
+        </div>
+
+        <!-- BOOT SOUND -->
+        <div class="tab-content" id="bootsound-content">
+          <section class="section">
+            <p class="logo-desc" data-i18n="bootSoundDesc">
+              选择 MP3 / WAV 等音频后，网页会自动转为机内 8 kHz 单声道 PCM，并截断到最长约 5 秒。未上传或清除后，开机仍播放默认两声蜂鸣。可先试听再写入。
+            </p>
+            <p class="logo-warning" data-i18n="bootSoundHint">
+              提示：写入的是转换后的短 PCM，不是原始 MP3；音质受 8 kHz 限制。仅 Default / Logo 开机画面会播放开机音。
+            </p>
+            <p class="logo-warning" data-i18n="logoWarning">
+              ⚠️ 请先<strong>正常开机进入使用界面</strong>后再连接 USB 操作（与刷字库、备份校准相同，无需 BOOT 模式）。
+            </p>
+          </section>
+
+          <section class="section">
+            <label data-i18n="selectAudio">选择音频</label>
+            <div class="file-input-wrapper">
+              <input type="file" id="bootSoundFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac" aria-label="选择开机音效">
+              <div class="file-input-label" id="bootSoundFileLabel">
+                <span class="file-name" id="bootSoundFileName" data-i18n="noFileSelected">未选择文件</span>
+                <span class="file-button" data-i18n="selectAudio">选择音频</span>
+              </div>
+            </div>
+            <p class="boot-sound-status" id="bootSoundStatus" aria-live="polite"></p>
+          </section>
+
+          <div class="logo-actions boot-sound-actions">
+            <button type="button" id="bootSoundPreviewBtn" disabled data-i18n="previewBootSound">试听</button>
+            <button type="button" id="bootSoundStopBtn" disabled data-i18n="stopBootSoundPreview">停止</button>
+            <button type="button" id="bootSoundUploadBtn" disabled data-i18n="uploadBootSound">写入开机音</button>
+            <button type="button" id="bootSoundClearBtn" data-i18n="clearBootSound">清除开机音</button>
+          </div>
+          <div class="tab-progress" id="bootSoundProgress" hidden>
+            <div class="progress-bar">
+              <div class="progress-fill" id="bootSoundProgressFill"></div>
+              <div class="progress-label" id="bootSoundProgressLabel">0%</div>
+            </div>
+          </div>
+          <div class="download-link" id="bootSoundDownload" style="display:none;">
+            <a href="#" id="bootSoundDownloadLink" download="boot_sound.wav" data-i18n="downloadBootSound">下载 boot_sound.wav</a>
+          </div>
+        </div>
+
         <!-- APRS MAP (aprs.fi, web-only) -->
         <div class="tab-content" id="aprs-content">
           <section class="section radar-panel">
@@ -666,7 +772,7 @@
           <span data-i18n="browserNote">需要 Chrome / Edge / Opera 浏览器。</span>
           <strong data-i18n="flashFirmwareBoot">仅刷固件</strong>
           <span data-i18n="enterBootMode">需进入 BOOT 模式（按住 PTT 开机）。</span>
-          <strong data-i18n="otherOperations">备份校准、校验校准、恢复校准、写频、基础信息</strong>
+          <strong data-i18n="otherOperations">备份校准、校验校准、恢复校准、写频、基础信息、开机图片、开机音效</strong>
           <span data-i18n="normalMode">均在正常开机使用界面下连接 USB 操作。</span>
         </aside>
 
@@ -737,9 +843,9 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/min/lang.js?v=20260825aprs7"></script>
+  <script src="js/min/lang.js?v=20260825boot7"></script>
   <script src="js/min/gb2312_codec.js?v=20260824obf"></script>
-  <script src="js/min/flash.js?v=20260825aprs6"></script>
+  <script src="js/min/flash.js?v=20260825boot7"></script>
   <script src="js/min/airline_icao.js?v=20260824obf"></script>
   <script src="js/min/radar.js?v=20260824worker"></script>
   <script src="js/min/aprs.js?v=20260825aprs6"></script>

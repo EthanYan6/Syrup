@@ -579,7 +579,12 @@ static void CMD_0521(uint32_t Port, const uint8_t *pBuffer)
     if (writeSize > SPI_FLASH_WRITE_SIZE)
         writeSize = SPI_FLASH_WRITE_SIZE;
 
-    PY25Q16_WriteBuffer(pCmd->Address, pCmd->Data, writeSize, false);
+    /* Size==0: sector erase only (web uses this to pre-erase large regions
+     * like boot sound before chunked program; avoids thrashing erase-per-chunk). */
+    if (writeSize == 0)
+        PY25Q16_SectorErase(pCmd->Address);
+    else
+        PY25Q16_WriteBuffer(pCmd->Address, pCmd->Data, writeSize, false);
 
     Reply.Header.ID    = 0x0522;
     Reply.Header.Size  = sizeof(Reply.Data);

@@ -106,7 +106,7 @@ const t_menu_item MenuList[] =
     {"MicBar",      MENU_MIC_BAR       },
 #endif
     // {"ChDisp",      MENU_MDF           }, // was "MDF" — hidden
-    // {"POnMsg",      MENU_PONMSG        }, // hidden: boot screen is fixed
+    {"POnMsg",      MENU_PONMSG        },
     {"BLTime",      MENU_ABR           }, // was "ABR"
     {"BLMin",       MENU_ABR_MIN       },
     {"BLMax",       MENU_ABR_MAX       },
@@ -305,17 +305,17 @@ const char* const gSubMenu_PTT_ID[] =
 const char* const gSubMenu_PONMSG[] =
 {
 #ifdef ENABLE_FEAT_F4HWN
-    "ALL",
-    "SOUND",
-#else
-    "FULL",
-#endif
-    "MESSAGE",
-    "VOLTAGE",
+    "NONE",
+    "DEFAULT",
 #ifdef ENABLE_FEAT_F4HWN_LOGO
     "LOGO",
 #endif
+#else
+    "FULL",
+    "MESSAGE",
+    "VOLTAGE",
     "NONE"
+#endif
 };
 
 #if defined(ENABLE_FEAT_F4HWN) && defined(ENABLE_FEAT_F4HWN_LOGO_SAV)

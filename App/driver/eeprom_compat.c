@@ -86,12 +86,13 @@ static const AddrMapping_t ADDR_MAPPINGS[] = {
                                                 // [0x08..0x407] 128x64 monochrome bitmap, 1024 Bytes
                                                 // ST7565-native: 8 pages * 128 columns, column-major LSB-top
 
-    // Not mapped, for documentation only (the EEPROM API uses 16-bit
-    // addresses and could not reach a 32 KB window anyway):
+    // Not mapped via EEPROM 16-bit API (documented only):
     //
-    // 0x1E0000 -> 0x1E8000: RX/TX append-only log * 32 KB / 8 sectors
-    //                       (ENABLE_FEAT_F4HWN_RXTX_LOG, accessed directly
-    //                       by app/rxtx_log.c, not through this layer)
+    // 0x012000: Mangosteen messenger (leave free for multi-FW coexistence)
+    // 0x013000..0x01CFFF: Syrup boot sound (40 KB) — magic "SYRS" + u8 PCM @ 8 kHz
+    //                       accessed by helper/boot_sound.c via PY25Q16_*
+    // 0x1E0000..0x1E7FFF: RX/TX append-only log * 32 KB
+    //                       (ENABLE_FEAT_F4HWN_RXTX_LOG, app/rxtx_log.c)
 };
 
 static void AddrTranslate(uint16_t EEPROM_Addr, uint16_t Size, uint32_t *PY25Q16_Addr_out, uint16_t *Size_out, bool *End_out);

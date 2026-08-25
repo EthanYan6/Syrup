@@ -202,6 +202,13 @@ const CALIB_SIZE          = 512;
 const LOGO_FLASH_ADDR     = 0x011000;
 const LOGO_HEADER_SIZE    = 8;
 const LOGO_BITMAP_SIZE    = 1024;
+/** helper/boot_sound.c — 40 KB region, magic SYRS + u8@8kHz PCM */
+const BOOT_SOUND_FLASH_ADDR  = 0x013000;
+const BOOT_SOUND_HEADER_SIZE = 16;
+const BOOT_SOUND_REGION_SIZE = 0xA000;
+const BOOT_SOUND_PCM_MAX     = BOOT_SOUND_REGION_SIZE - BOOT_SOUND_HEADER_SIZE;
+const BOOT_SOUND_RATE_HZ     = 8000;
+const BOOT_SOUND_MAGIC_BYTES = [0x53, 0x59, 0x52, 0x53]; /* SYRS */
 const CALIB_CHUNK         = 16;
 
 /** 配置数据在 SPI Flash 中的起始地址和大小（与 App/settings.c 中的存储位置一致） */
@@ -607,8 +614,29 @@ on('logToggle', 'click', () => {
 
 function updateProgress(pct) {
   const r = Math.round(pct);
-  $('progressFill').style.width = r + '%';
-  $('progressLabel').textContent = r + '%';
+  const fill = $('progressFill');
+  const label = $('progressLabel');
+  if (fill) fill.style.width = r + '%';
+  if (label) label.textContent = r + '%';
+}
+
+/** Show/update/hide an in-tab progress bar only (logo / bootsound). Do not toggle the global bar. */
+function setMediaTabProgress(kind, pct, visible) {
+  const box = $(kind + 'Progress');
+  const fill = $(kind + 'ProgressFill');
+  const label = $(kind + 'ProgressLabel');
+  const r = Math.round(pct);
+  if (box) {
+    if (visible === true) {
+      box.hidden = false;
+      box.removeAttribute('hidden');
+    } else if (visible === false) {
+      box.hidden = true;
+      box.setAttribute('hidden', '');
+    }
+  }
+  if (fill) fill.style.width = r + '%';
+  if (label) label.textContent = r + '%';
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -2197,9 +2225,9 @@ let writefreqSortableInstance = null;
 /** 与 Syrup settings.h CHANNEL_NAME_MAX_BYTES 一致：最多 15 字节（UTF-8，约 5 个汉字） */
 const WRITE_FREQ_CHANNEL_NAME_MAX_BYTES = 15;
 const WRITE_FREQ_SPI_MAX_CHUNK = 120;
-/** waitForMsg 循环次数，×10ms 为大约最长等待（例 120 ≈ 1.2s） */
-const WRITE_FREQ_SPI_READ_WAIT_ITERATIONS = 120;
-const WRITE_FREQ_SPI_READ_RETRIES = 5;
+/** waitForMsg 循环次数，×10ms 为大约最长等待（例 200 ≈ 2s） */
+const WRITE_FREQ_SPI_READ_WAIT_ITERATIONS = 200;
+const WRITE_FREQ_SPI_READ_RETRIES = 8;
 /** SPI 写扇区/整片编程时固件可能阻塞较久，需明显大于读（例 1500 ≈ 15s） */
 const WRITE_FREQ_SPI_WRITE_WAIT_ITERATIONS = 1500;
 
@@ -2683,6 +2711,9 @@ async function spiFlashReadChunk(sessionTs, flashAddress, byteLength) {
     }
     const payloadAvail = resp.data.length - 8;
     const copyLen = payloadAvail < len ? payloadAvail : len;
+    if (copyLen < len) {
+      continue;
+    }
     const out = new Uint8Array(len);
     let copyIndex = 0;
     for (; copyIndex < copyLen; copyIndex++) {
@@ -2722,6 +2753,42 @@ async function spiFlashWriteChunk(sessionTs, flashAddress, payload) {
     }
   }
   return ok;
+}
+
+/** Size=0 SPI write → firmware PY25Q16_SectorErase (4 KB). Needs Syrup with erase support. */
+async function spiFlashEraseSector(sessionTs, flashAddress) {
+  const addr = (flashAddress & ~0xfff) >>> 0;
+  let retry = 0;
+  for (; retry < 3; retry++) {
+    if (retry > 0) await sleep(200);
+    const msg = createMessage(MSG_SPI_FLASH_WRITE, 12);
+    const v = new DataView(msg.buffer);
+    v.setUint32(4, addr, true);
+    v.setUint16(8, 0, true); /* size 0 = erase */
+    v.setUint16(10, 0, true);
+    v.setUint32(12, sessionTs >>> 0, true);
+    await sendMessage(msg);
+    const wr = await waitForMsg(MSG_SPI_FLASH_WRITE_RESP, WRITE_FREQ_SPI_WRITE_WAIT_ITERATIONS);
+    if (wr) return true;
+  }
+  return false;
+}
+
+/** Erase every 4 KB sector covering [start, start+length). */
+async function spiFlashEraseRange(sessionTs, startAddr, length, onProgress) {
+  const start = (startAddr & ~0xfff) >>> 0;
+  const end = (startAddr + length + 0xfff) & ~0xfff;
+  const total = Math.max(1, (end - start) / 0x1000);
+  let done = 0;
+  for (let a = start; a < end; a += 0x1000) {
+    const ok = await spiFlashEraseSector(sessionTs, a);
+    if (!ok) {
+      throw new Error('擦除 Flash 扇区失败 @ 0x' + a.toString(16));
+    }
+    done++;
+    if (typeof onProgress === 'function') onProgress(done / total);
+    await sleep(40);
+  }
 }
 
 /** 解码 0x004000 名区：遇 0x00/0xFF 截断；UTF-8（与 SETTINGS_FetchChannelName / ENABLE_CHINESE 一致） */
@@ -5338,6 +5405,7 @@ flashStepsInitFloatingTooltips();
     try {
       isFlashing = true;
       logoUploadBtn.disabled = true;
+      setMediaTabProgress('logo', 0, true);
       log(window.t ? window.t('logUploadingBootLogo') : '正在上传开机图片...', 'info');
 
       const session = await requestDeviceInfoForCalib();
@@ -5355,7 +5423,7 @@ flashStepsInitFloatingTooltips();
         const ok = await spiFlashWriteChunk(ts, LOGO_FLASH_ADDR + off, chunk);
         if (!ok) throw new Error('写入 logo 头部失败 @ 0x' + (LOGO_FLASH_ADDR + off).toString(16));
         written += chunkLen;
-        updateProgress((written / totalSize) * 100);
+        setMediaTabProgress('logo', (written / totalSize) * 100, true);
         await sleep(50);
       }
 
@@ -5367,19 +5435,20 @@ flashStepsInitFloatingTooltips();
         const ok = await spiFlashWriteChunk(ts, LOGO_FLASH_ADDR + LOGO_HEADER_SIZE + off, chunk);
         if (!ok) throw new Error('写入 logo 数据失败 @ 0x' + (LOGO_FLASH_ADDR + LOGO_HEADER_SIZE + off).toString(16));
         written += chunkLen;
-        updateProgress((written / totalSize) * 100);
+        setMediaTabProgress('logo', (written / totalSize) * 100, true);
         if ((off / SPI_CHUNK_SIZE) % 10 === 0)
           log(window.t ? window.t('logWrittenBytesProgress', {written: written, total: totalSize}) : '已写入 ' + written + '/' + totalSize + ' bytes', 'info');
         await sleep(50);
       }
 
-      updateProgress(100);
+      setMediaTabProgress('logo', 100, true);
       log(window.t ? window.t('logBootLogoUploadSuccess') : '开机图片上传成功！请在菜单 POnMsg 中选择 Logo', 'success');
     } catch(e) {
       log(window.t ? window.t('logUploadFailed', {msg: e.message}) : '上传失败: ' + e.message, 'error');
     } finally {
       isFlashing = false;
       logoUploadBtn.disabled = !logoImageData;
+      setTimeout(function() { setMediaTabProgress('logo', 0, false); }, 800);
     }
   });
 
@@ -5394,6 +5463,7 @@ flashStepsInitFloatingTooltips();
     }
     try {
       logoReadBtn.disabled = true;
+      setMediaTabProgress('logo', 0, true);
       log(window.t ? window.t('logReadingBootLogo') : '正在读取开机图片...', 'info');
 
       const session = await requestDeviceInfoForCalib();
@@ -5411,10 +5481,10 @@ flashStepsInitFloatingTooltips();
         bitmap.set(chunk, off);
         for (let i = off; i < off + chunkLen; i++) bitmap[i] ^= 0xFF;
         readBytes += chunkLen;
-        updateProgress((readBytes / LOGO_BITMAP_SIZE) * 100);
+        setMediaTabProgress('logo', (readBytes / LOGO_BITMAP_SIZE) * 100, true);
       }
 
-      updateProgress(100);
+      setMediaTabProgress('logo', 100, true);
       bitmapToCanvas(bitmap);
       logoImageData = bitmap;
 
@@ -5426,6 +5496,342 @@ flashStepsInitFloatingTooltips();
       log(window.t ? window.t('logReadFailed', {msg: e.message}) : '读取失败: ' + e.message, 'error');
     } finally {
       logoReadBtn.disabled = false;
+      setTimeout(function() { setMediaTabProgress('logo', 0, false); }, 800);
+    }
+  });
+})();
+
+// ========== BOOT SOUND (inside logo tab) ==========
+(function initBootSoundSection() {
+  const fileInput = $('bootSoundFile');
+  const fileNameEl = $('bootSoundFileName');
+  const statusEl = $('bootSoundStatus');
+  const previewBtn = $('bootSoundPreviewBtn');
+  const stopBtn = $('bootSoundStopBtn');
+  const uploadBtn = $('bootSoundUploadBtn');
+  const clearBtn = $('bootSoundClearBtn');
+  const downloadBox = $('bootSoundDownload');
+  const downloadLink = $('bootSoundDownloadLink');
+
+  if (!fileInput || !uploadBtn) return;
+
+  let pcmU8 = null;
+  let origDurationSec = 0;
+  let previewCtx = null;
+  let previewSource = null;
+  let downloadObjectUrl = null;
+
+  function tKey(key, fallback, params) {
+    if (window.t) return window.t(key, params || {});
+    let s = fallback;
+    if (params) {
+      Object.keys(params).forEach(function(k) {
+        s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), String(params[k]));
+      });
+    }
+    return s;
+  }
+
+  function setStatus(text) {
+    if (statusEl) statusEl.textContent = text || '';
+  }
+
+  function stopPreview() {
+    try {
+      if (previewSource) {
+        previewSource.stop();
+        previewSource.disconnect();
+      }
+    } catch (e) { /* ignore */ }
+    previewSource = null;
+    if (previewCtx) {
+      try { previewCtx.close(); } catch (e2) { /* ignore */ }
+      previewCtx = null;
+    }
+    if (stopBtn) stopBtn.disabled = true;
+  }
+
+  function writeAscii(view, offset, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  }
+
+  /** Build a downloadable 8-bit mono WAV @ 8 kHz from unsigned PCM. */
+  function pcmU8ToWavBlob(pcm) {
+    const dataSize = pcm.length;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    writeAscii(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeAscii(view, 8, 'WAVE');
+    writeAscii(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // mono
+    view.setUint32(24, BOOT_SOUND_RATE_HZ, true);
+    view.setUint32(28, BOOT_SOUND_RATE_HZ, true); // byte rate (8-bit mono)
+    view.setUint16(32, 1, true); // block align
+    view.setUint16(34, 8, true); // bits
+    writeAscii(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+    const bytes = new Uint8Array(buffer, 44);
+    bytes.set(pcm);
+    return new Blob([buffer], { type: 'audio/wav' });
+  }
+
+  function refreshDownloadLink() {
+    if (!downloadBox || !downloadLink) return;
+    if (downloadObjectUrl) {
+      try { URL.revokeObjectURL(downloadObjectUrl); } catch (e) { /* ignore */ }
+      downloadObjectUrl = null;
+    }
+    if (!pcmU8 || !pcmU8.length) {
+      downloadBox.style.display = 'none';
+      downloadLink.removeAttribute('href');
+      return;
+    }
+    downloadObjectUrl = URL.createObjectURL(pcmU8ToWavBlob(pcmU8));
+    downloadLink.href = downloadObjectUrl;
+    downloadLink.download = 'boot_sound.wav';
+    downloadBox.style.display = 'block';
+  }
+
+  function buildHeader(pcmLen) {
+    const h = new Uint8Array(BOOT_SOUND_HEADER_SIZE);
+    h[0] = BOOT_SOUND_MAGIC_BYTES[0];
+    h[1] = BOOT_SOUND_MAGIC_BYTES[1];
+    h[2] = BOOT_SOUND_MAGIC_BYTES[2];
+    h[3] = BOOT_SOUND_MAGIC_BYTES[3];
+    h[4] = 1;
+    h[5] = 0;
+    h[6] = BOOT_SOUND_RATE_HZ & 0xff;
+    h[7] = (BOOT_SOUND_RATE_HZ >> 8) & 0xff;
+    h[8] = pcmLen & 0xff;
+    h[9] = (pcmLen >> 8) & 0xff;
+    h[10] = (pcmLen >> 16) & 0xff;
+    h[11] = (pcmLen >> 24) & 0xff;
+    return h;
+  }
+
+  async function decodeFileToPcm(file) {
+    const ab = await file.arrayBuffer();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const tmpCtx = new AudioCtx();
+    let audioBuf;
+    try {
+      audioBuf = await tmpCtx.decodeAudioData(ab.slice(0));
+    } finally {
+      try { await tmpCtx.close(); } catch (e) { /* ignore */ }
+    }
+
+    origDurationSec = audioBuf.duration;
+
+    const srcLen = audioBuf.length;
+    const srcRate = audioBuf.sampleRate;
+    const mono = new Float32Array(srcLen);
+    const nCh = audioBuf.numberOfChannels;
+    for (let ch = 0; ch < nCh; ch++) {
+      const data = audioBuf.getChannelData(ch);
+      for (let i = 0; i < srcLen; i++) mono[i] += data[i] / nCh;
+    }
+
+    const outLen = Math.min(BOOT_SOUND_PCM_MAX, Math.max(1, Math.floor(origDurationSec * BOOT_SOUND_RATE_HZ)));
+    const outU8 = new Uint8Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const srcPos = (i * srcRate) / BOOT_SOUND_RATE_HZ;
+      const i0 = Math.floor(srcPos);
+      const i1 = Math.min(i0 + 1, srcLen - 1);
+      const frac = srcPos - i0;
+      let v = mono[i0] * (1 - frac) + mono[i1] * frac;
+      if (v > 1) v = 1;
+      if (v < -1) v = -1;
+      outU8[i] = Math.round((v + 1) * 127.5);
+    }
+    return outU8;
+  }
+
+  function updateReadyUi(statusOverride) {
+    if (!pcmU8 || !pcmU8.length) {
+      previewBtn.disabled = true;
+      uploadBtn.disabled = true;
+      refreshDownloadLink();
+      if (statusOverride) setStatus(statusOverride);
+      return;
+    }
+    previewBtn.disabled = false;
+    uploadBtn.disabled = false;
+    refreshDownloadLink();
+    if (statusOverride) {
+      setStatus(statusOverride);
+      return;
+    }
+    const sec = (pcmU8.length / BOOT_SOUND_RATE_HZ).toFixed(2);
+    let msg = tKey('bootSoundReady', '已转换：约 {sec} 秒（{bytes} 字节 PCM）。超过部分已自动截断。可试听或下载。', {
+      sec: sec,
+      bytes: pcmU8.length
+    });
+    if (origDurationSec > pcmU8.length / BOOT_SOUND_RATE_HZ + 0.05) {
+      msg += ' ' + tKey('bootSoundTruncated', '原时长约 {orig} 秒，已截断为约 {sec} 秒。', {
+        orig: origDurationSec.toFixed(2),
+        sec: sec
+      });
+    }
+    setStatus(msg);
+  }
+
+  fileInput.addEventListener('change', async function(e) {
+    const file = e.target.files && e.target.files[0];
+    stopPreview();
+    pcmU8 = null;
+    previewBtn.disabled = true;
+    uploadBtn.disabled = true;
+    refreshDownloadLink();
+    if (!file) {
+      if (fileNameEl) fileNameEl.textContent = tKey('noFileSelected', '未选择文件');
+      setStatus('');
+      return;
+    }
+    if (fileNameEl) fileNameEl.textContent = file.name;
+    setStatus('…');
+    try {
+      pcmU8 = await decodeFileToPcm(file);
+      updateReadyUi();
+    } catch (err) {
+      pcmU8 = null;
+      updateReadyUi('');
+      setStatus('');
+      log(tKey('logBootSoundConvertFail', '音频转换失败: {msg}', { msg: err.message || String(err) }), 'error');
+    }
+  });
+
+  previewBtn.addEventListener('click', async function() {
+    if (!pcmU8 || !pcmU8.length) {
+      log(tKey('bootSoundNeedConvert', '请先选择音频并等待转换完成'), 'error');
+      return;
+    }
+    stopPreview();
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      previewCtx = new AudioCtx();
+      if (previewCtx.state === 'suspended') {
+        await previewCtx.resume();
+      }
+      const buf = previewCtx.createBuffer(1, pcmU8.length, BOOT_SOUND_RATE_HZ);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < pcmU8.length; i++) {
+        ch[i] = pcmU8[i] / 127.5 - 1;
+      }
+      previewSource = previewCtx.createBufferSource();
+      previewSource.buffer = buf;
+      previewSource.connect(previewCtx.destination);
+      previewSource.onended = function() {
+        stopBtn.disabled = true;
+        previewSource = null;
+      };
+      previewSource.start(0);
+      stopBtn.disabled = false;
+    } catch (err) {
+      log(tKey('logBootSoundPreviewFail', '试听失败: {msg}', { msg: err.message || String(err) }), 'error');
+      stopPreview();
+    }
+  });
+
+  stopBtn.addEventListener('click', function() {
+    stopPreview();
+  });
+
+  uploadBtn.addEventListener('click', async function() {
+    if (!pcmU8 || !pcmU8.length) {
+      log(tKey('bootSoundNeedConvert', '请先选择音频并等待转换完成'), 'error');
+      return;
+    }
+    if (!port) {
+      try {
+        await connect();
+      } catch (e) {
+        log(window.t ? window.t('logConnectFailed', { msg: e.message }) : '连接失败: ' + e.message, 'error');
+        return;
+      }
+    }
+    try {
+      isFlashing = true;
+      uploadBtn.disabled = true;
+      clearBtn.disabled = true;
+      setMediaTabProgress('bootSound', 0, true);
+      log(tKey('logUploadingBootSound', '正在写入开机音效...'), 'info');
+      const session = await requestDeviceInfoForCalib();
+      const ts = session.timestamp;
+      const header = buildHeader(pcmU8.length);
+      const blob = new Uint8Array(header.length + pcmU8.length);
+      blob.set(header, 0);
+      blob.set(pcmU8, header.length);
+
+      /* Pre-erase sectors once so chunked program does not thrash erase+full-sector rewrite. */
+      log(tKey('logErasingBootSound', '正在擦除开机音 Flash 区...'), 'info');
+      await spiFlashEraseRange(ts, BOOT_SOUND_FLASH_ADDR, blob.length, function(p) {
+        setMediaTabProgress('bootSound', p * 20, true);
+      });
+
+      let written = 0;
+      for (let off = 0; off < blob.length; off += SPI_CHUNK_SIZE) {
+        const chunkLen = Math.min(SPI_CHUNK_SIZE, blob.length - off);
+        const chunk = blob.slice(off, off + chunkLen);
+        const ok = await spiFlashWriteChunk(ts, BOOT_SOUND_FLASH_ADDR + off, chunk);
+        if (!ok) throw new Error('写入开机音失败 @ 0x' + (BOOT_SOUND_FLASH_ADDR + off).toString(16));
+        written += chunkLen;
+        setMediaTabProgress('bootSound', 20 + (written / blob.length) * 80, true);
+        if ((off / SPI_CHUNK_SIZE) % 10 === 0) {
+          log(window.t ? window.t('logWrittenBytesProgress', { written: written, total: blob.length }) : ('已写入 ' + written + '/' + blob.length), 'info');
+        }
+        await sleep(50);
+      }
+      setMediaTabProgress('bootSound', 100, true);
+      updateReadyUi(tKey('logBootSoundUploadSuccess', '开机音写入成功！重启后 Default/Logo 将播放自定义音效'));
+      log(tKey('logBootSoundUploadSuccess', '开机音写入成功！重启后 Default/Logo 将播放自定义音效'), 'success');
+    } catch (e) {
+      log(window.t ? window.t('logUploadFailed', { msg: e.message }) : '上传失败: ' + e.message, 'error');
+    } finally {
+      isFlashing = false;
+      uploadBtn.disabled = !pcmU8;
+      clearBtn.disabled = false;
+      setTimeout(function() { setMediaTabProgress('bootSound', 0, false); }, 800);
+    }
+  });
+
+  clearBtn.addEventListener('click', async function() {
+    if (!port) {
+      try {
+        await connect();
+      } catch (e) {
+        log(window.t ? window.t('logConnectFailed', { msg: e.message }) : '连接失败: ' + e.message, 'error');
+        return;
+      }
+    }
+    try {
+      isFlashing = true;
+      clearBtn.disabled = true;
+      uploadBtn.disabled = true;
+      setMediaTabProgress('bootSound', 0, true);
+      log(tKey('logClearingBootSound', '正在清除开机音...'), 'info');
+      const session = await requestDeviceInfoForCalib();
+      const ts = session.timestamp;
+      /* Erase first sector (clears SYRS header); rest can stay until next upload. */
+      await spiFlashEraseRange(ts, BOOT_SOUND_FLASH_ADDR, 1, function(p) {
+        setMediaTabProgress('bootSound', p * 100, true);
+      });
+      setMediaTabProgress('bootSound', 100, true);
+      stopPreview();
+      pcmU8 = null;
+      if (fileNameEl) fileNameEl.textContent = tKey('noFileSelected', '未选择文件');
+      updateReadyUi(tKey('logBootSoundCleared', '已清除开机音，开机将恢复默认蜂鸣'));
+      log(tKey('logBootSoundCleared', '已清除开机音，开机将恢复默认蜂鸣'), 'success');
+    } catch (e) {
+      log(window.t ? window.t('logUploadFailed', { msg: e.message }) : '上传失败: ' + e.message, 'error');
+    } finally {
+      isFlashing = false;
+      clearBtn.disabled = false;
+      uploadBtn.disabled = !pcmU8;
+      previewBtn.disabled = !pcmU8;
+      setTimeout(function() { setMediaTabProgress('bootSound', 0, false); }, 800);
     }
   });
 })();

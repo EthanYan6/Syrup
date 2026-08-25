@@ -28,6 +28,7 @@
 #ifdef ENABLE_FEAT_F4HWN
     #include "driver/system.h"
     #include "audio.h"
+    #include "helper/boot_sound.h"
     #include "misc.h"
 #endif
 
@@ -120,8 +121,18 @@ void BACKLIGHT_InitHardware()
 
 static void BACKLIGHT_Sound(void)
 {
-    AUDIO_PlayBeep(BEEP_880HZ_60MS_TRIPLE_BEEP);
-    AUDIO_PlayBeep(BEEP_880HZ_60MS_TRIPLE_BEEP);
+    if (gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_DEFAULT
+#ifdef ENABLE_FEAT_F4HWN_LOGO
+        || gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_LOGO
+#endif
+    )
+    {
+        if (!BOOT_SOUND_PlayIfPresent())
+        {
+            AUDIO_PlayBeep(BEEP_880HZ_60MS_TRIPLE_BEEP);
+            AUDIO_PlayBeep(BEEP_880HZ_60MS_TRIPLE_BEEP);
+        }
+    }
 
     gK5startup = false;
 }

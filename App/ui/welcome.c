@@ -239,41 +239,58 @@ void UI_DisplayWelcome(void)
 #endif
     UI_DisplayClear();
 
-    const uint8_t ox = (uint8_t)((128u - BITMAP_SYRUP_WIDTH) / 2u);
-    const uint8_t oy = (uint8_t)((48u - BITMAP_SYRUP_HEIGHT) / 2u);
+#ifdef ENABLE_FEAT_F4HWN
+    ST7565_BlitStatusLine();
+    ST7565_BlitFullScreen();
 
-    for (uint8_t page = 0; page < BITMAP_SYRUP_PAGES; page++) {
-        const uint8_t *src = &BITMAP_Syrup[(uint16_t)page * BITMAP_SYRUP_WIDTH];
-        const uint8_t y0 = (uint8_t)(oy + page * 8u);
-
-        if (y0 < 8u) {
-            memcpy(gStatusLine + ox, src, BITMAP_SYRUP_WIDTH);
-        } else {
-            const uint8_t fb_line = (uint8_t)((y0 - 8u) / 8u);
-            memcpy(gFrameBuffer[fb_line] + ox, src, BITMAP_SYRUP_WIDTH);
-        }
+    if (gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_NONE) {
+        ST7565_FillScreen(0x00);
+        return;
     }
 
+#ifdef ENABLE_FEAT_F4HWN_LOGO
+    if (gEeprom.POWER_ON_DISPLAY_MODE == POWER_ON_DISPLAY_MODE_LOGO) {
+        UI_LoadLogo();
+    }
+    else
+#endif
+#endif
     {
-        const char *home_label = SETTINGS_HomeLabelText();
-#ifdef ENABLE_CHINESE
-        if (SETTINGS_ChannelNameHasCjkUtf8(home_label)) {
-            /* Version on line 4 (screen y 40–47); 12px CJK last line at fb y 44–55 (screen 52–63). */
-#ifdef ENABLE_FEAT_F4HWN
-            UI_PrintStringSmallNormal(DisplayVersion, 0, 127, 4);
-#else
-            UI_PrintStringSmallNormal(Version, 0, 127, 4);
-#endif
-            UI_PrintStringSmallAtPixel(home_label, 0, 127, 44u, 55u, 0u);
-        } else
-#endif
+        const uint8_t ox = (uint8_t)((128u - BITMAP_SYRUP_WIDTH) / 2u);
+        const uint8_t oy = (uint8_t)((48u - BITMAP_SYRUP_HEIGHT) / 2u);
+
+        for (uint8_t page = 0; page < BITMAP_SYRUP_PAGES; page++) {
+            const uint8_t *src = &BITMAP_Syrup[(uint16_t)page * BITMAP_SYRUP_WIDTH];
+            const uint8_t y0 = (uint8_t)(oy + page * 8u);
+
+            if (y0 < 8u) {
+                memcpy(gStatusLine + ox, src, BITMAP_SYRUP_WIDTH);
+            } else {
+                const uint8_t fb_line = (uint8_t)((y0 - 8u) / 8u);
+                memcpy(gFrameBuffer[fb_line] + ox, src, BITMAP_SYRUP_WIDTH);
+            }
+        }
+
         {
+            const char *home_label = SETTINGS_HomeLabelText();
+#ifdef ENABLE_CHINESE
+            if (SETTINGS_ChannelNameHasCjkUtf8(home_label)) {
 #ifdef ENABLE_FEAT_F4HWN
-            UI_PrintStringSmallNormal(DisplayVersion, 0, 127, 5);
+                UI_PrintStringSmallNormal(DisplayVersion, 0, 127, 4);
 #else
-            UI_PrintStringSmallNormal(Version, 0, 127, 5);
+                UI_PrintStringSmallNormal(Version, 0, 127, 4);
 #endif
-            UI_PrintStringSmallNormal(home_label, 0, 127, 6);
+                UI_PrintStringSmallAtPixel(home_label, 0, 127, 44u, 55u, 0u);
+            } else
+#endif
+            {
+#ifdef ENABLE_FEAT_F4HWN
+                UI_PrintStringSmallNormal(DisplayVersion, 0, 127, 5);
+#else
+                UI_PrintStringSmallNormal(Version, 0, 127, 5);
+#endif
+                UI_PrintStringSmallNormal(home_label, 0, 127, 6);
+            }
         }
     }
 

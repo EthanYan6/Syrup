@@ -19,7 +19,7 @@
 
 #include <stdint.h>
 
-#define BITMAP_SYRUP_WIDTH  48
+#define BITMAP_SYRUP_WIDTH  28
 #define BITMAP_SYRUP_HEIGHT 32
 #define BITMAP_SYRUP_PAGES  (BITMAP_SYRUP_HEIGHT / 8)
 

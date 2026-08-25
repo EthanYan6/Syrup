@@ -780,7 +780,19 @@ button:disabled { background: var(--bg-muted); color: var(--text-disabled); curs
 .progress-container { display: none; margin: 16px 0; }
 .progress-bar { background: var(--bg-elevated); border-radius: 8px; height: 24px; overflow: hidden; position: relative; border: 1px solid var(--border-strong); }
 .progress-fill { background: linear-gradient(90deg, var(--btn-primary), var(--btn-primary-hover)); height: 100%; width: 0; transition: width 0.3s; }
-.progress-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 0.75em; color: #fff; font-weight: 600; }
+.progress-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: none;
+  font-size: 0.75em;
+  color: #fff;
+  font-weight: 600;
+  z-index: 1;
+  pointer-events: none;
+}
 html.theme-light .progress-label { color: var(--text-primary); }
 
 /* Log */
@@ -2764,6 +2776,50 @@ html.theme-light .calib-check-modal__backdrop {
   display: block;
 }
 .logo-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.logo-section-title { font-size: 1.05em; margin: 0 0 10px; color: var(--text-primary); }
+.logo-divider { border: none; border-top: 1px solid var(--border-default); margin: 22px 0; }
+.boot-sound-status { font-size: 0.88em; color: var(--text-muted); margin-top: 10px; min-height: 1.4em; line-height: 1.45; }
+.boot-sound-actions { margin-bottom: 8px; }
+.tab-progress { margin: 14px 0 6px; }
+.tab-progress[hidden] { display: none !important; }
+/* Same structure/centering as global #progressContainer .progress-label */
+.tab-progress .progress-bar {
+  background: var(--bg-elevated);
+  border-radius: 8px;
+  height: 24px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border-strong);
+}
+.tab-progress .progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--btn-primary), var(--btn-primary-hover));
+  transition: width 0.15s ease;
+}
+.tab-progress .progress-label {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  width: auto;
+  height: auto;
+  transform: none;
+  text-align: center;
+  font-size: 0.75em;
+  color: #fff;
+  font-weight: 600;
+  z-index: 2;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+html.theme-light .tab-progress .progress-label { color: var(--text-primary); }
 
 
 /* ========== User manual page ========== */

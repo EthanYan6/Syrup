@@ -222,13 +222,18 @@ void Main(void)
 
         BACKLIGHT_TurnOn();
 
-        // 2.55 second boot-up screen
-        while (boot_counter_10ms > 0)
+#ifdef ENABLE_FEAT_F4HWN
+        if (gEeprom.POWER_ON_DISPLAY_MODE != POWER_ON_DISPLAY_MODE_NONE)
+#endif
         {
-            if (KEYBOARD_Poll() != KEY_INVALID)
-            {   // halt boot beeps
-                boot_counter_10ms = 0;
-                break;
+            // ~2.55 s boot screen (drains while custom sound plays in BACKLIGHT_Sound)
+            while (boot_counter_10ms > 0)
+            {
+                if (KEYBOARD_Poll() != KEY_INVALID)
+                {
+                    boot_counter_10ms = 0;
+                    break;
+                }
             }
         }
         RADIO_SetupRegisters(true);
