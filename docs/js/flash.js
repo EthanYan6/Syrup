@@ -217,13 +217,13 @@ const CONFIG_FLASH_SIZE   = 0x0200;
 const CONFIG_CHUNK        = 32;
 
 /**
- * 校准区 EEPROM 基址：本站读写固定为 v5 地址 0xB000。
- * 物理 Flash 0x010000 ↔ 协议地址 0xB000（512 字节）；不映射 0x1E00，以免占信道。
+ * 校准区 EEPROM 基址：v5.0.0 起为 0xB000，更早固件为 0x1E00。
+ * 备份时按设备固件版本选择读取地址；恢复校准固定写入 0xB000（Syrup v5 区）。
  */
 const CALIB_V5_BASE          = 0xB000;
-const CALIB_OFFICIAL_BASE    = 0x1E00;        // 仅校准检查对照列使用
+const CALIB_OFFICIAL_BASE    = 0x1E00;
 const CALIB_THIRD_PARTY_BASE = CALIB_V5_BASE;
-let calibEepromBase = CALIB_V5_BASE;
+let calibEepromBase = CALIB_OFFICIAL_BASE;
 
 // ========== STATE ==========
 let port = null, reader = null, writer = null;
@@ -933,11 +933,8 @@ async function handshake(blVersion) {
   readBuffer = [];
 }
 
-/**
- * 记录设备信息字符串；本站校准读写固定 0xB000，不按版本切换。
- */
-function applyCalibBaseFromDeviceInfo(deviceInfoPayload) {
-  calibEepromBase = CALIB_V5_BASE;
+/** 记录 MSG_DEV_INFO_RESP 中的设备信息字符串（不修改校准基址） */
+function logDeviceInfoPayload(deviceInfoPayload) {
   let asciiLine = '';
   let idx = 0;
   for (; idx < deviceInfoPayload.length; idx++) {
@@ -951,7 +948,6 @@ function applyCalibBaseFromDeviceInfo(deviceInfoPayload) {
   }
   if (asciiLine.length > 0) {
     log(window.t ? window.t('logDeviceInfo') + asciiLine : '设备信息: ' + asciiLine, 'success');
-    log(window.t ? window.t('logFirmwareCalibBase', {ver: asciiLine, addr: 'B000'}) : '校准区基址固定 0xB000', 'info');
     return;
   }
   let hexLine = '';
@@ -963,9 +959,54 @@ function applyCalibBaseFromDeviceInfo(deviceInfoPayload) {
   log(window.t ? window.t('logDeviceInfoHex') + hexLine : '设备信息(hex): ' + hexLine, 'info');
 }
 
-/** 导出/恢复校准用：发 DEV_INFO_REQ，等设备应答（运行中的固件协议），不使用 Bootloader 的 NOTIFY 检测 */
-async function requestDeviceInfoForCalib(purpose) {
-  calibEepromBase = CALIB_V5_BASE;
+/** 根据 MSG_DEV_INFO_RESP 中的 ASCII 设备字符串解析固件主版本，设置全局 calibEepromBase（对齐 UVTools2） */
+function applyCalibBaseFromDeviceInfo(deviceInfoPayload) {
+  let asciiLine = '';
+  let idx = 0;
+  for (; idx < deviceInfoPayload.length; idx++) {
+    const b = deviceInfoPayload[idx];
+    if (b === 0x00 || b === 0xff) {
+      break;
+    }
+    if (b >= 32 && b < 127) {
+      asciiLine += String.fromCharCode(b);
+    }
+  }
+  if (asciiLine.length > 0) {
+    log(window.t ? window.t('logDeviceInfo') + asciiLine : '设备信息: ' + asciiLine, 'success');
+    const versionMatch = asciiLine.match(/v(\d+\.\d+\.\d+)/);
+    if (versionMatch) {
+      const verStr = versionMatch[1];
+      const parts = verStr.split('.');
+      const major = parseInt(parts[0], 10);
+      if (major >= 5) {
+        calibEepromBase = CALIB_V5_BASE;
+        log(window.t ? window.t('logFirmwareCalibBase', {ver: verStr, addr: 'B000'}) : '固件 v' + verStr + '：校准区基址 0xB000', 'info');
+      } else {
+        calibEepromBase = CALIB_OFFICIAL_BASE;
+        log(window.t ? window.t('logFirmwareCalibBase', {ver: verStr, addr: '1E00'}) : '固件 v' + verStr + '：校准区基址 0x1E00', 'info');
+      }
+    }
+    return;
+  }
+  let hexLine = '';
+  let hi = 0;
+  const hexLimit = Math.min(deviceInfoPayload.length, 40);
+  for (; hi < hexLimit; hi++) {
+    hexLine += deviceInfoPayload[hi].toString(16).padStart(2, '0').toUpperCase() + ' ';
+  }
+  log(window.t ? window.t('logDeviceInfoHex') + hexLine : '设备信息(hex): ' + hexLine, 'info');
+}
+
+/**
+ * 导出/恢复校准用：发 DEV_INFO_REQ，等设备应答（运行中的固件协议），不使用 Bootloader 的 NOTIFY 检测。
+ * @param {string} [purpose]
+ * @param {{ useVersionBase?: boolean }} [options] useVersionBase=true 时按固件版本选基址（备份）；false 时固定 0xB000（恢复）。
+ */
+async function requestDeviceInfoForCalib(purpose, options) {
+  const opts = options || {};
+  const useVersionBase = opts.useVersionBase !== false;
+  calibEepromBase = useVersionBase ? CALIB_OFFICIAL_BASE : CALIB_V5_BASE;
   const purposeText = purpose || '校准';
   log(window.t ? window.t('logRequestingDeviceInfo', {purpose: purposeText}) : '正在请求设备信息（' + purposeText + '）...', 'info');
   serialRxTotalBytes = 0;
@@ -1005,7 +1046,12 @@ async function requestDeviceInfoForCalib(purpose) {
         continue;
       }
       if (resp.msgType === MSG_DEV_INFO_RESP) {
-        applyCalibBaseFromDeviceInfo(resp.data);
+        if (useVersionBase) {
+          applyCalibBaseFromDeviceInfo(resp.data);
+        } else {
+          logDeviceInfoPayload(resp.data);
+          calibEepromBase = CALIB_V5_BASE;
+        }
         log(window.t ? window.t('logDeviceReady', {purpose: purposeText}) : '设备已就绪（' + purposeText + '会话）', 'success');
         return { timestamp: sessionTimestamp };
       }
@@ -1498,7 +1544,7 @@ on('dumpBtn', 'click', async () => {
     if (!port) await connect();
     readBuffer = [];
     await sleep(1000);
-    const calibSession = await requestDeviceInfoForCalib();
+    const calibSession = await requestDeviceInfoForCalib('备份');
     log(window.t ? window.t('logExportCalibration') : '导出校准数据...', 'info');
     const data = new Uint8Array(CALIB_SIZE);
     const ts = calibSession.timestamp;
@@ -1570,10 +1616,10 @@ on('restoreBtn', 'click', async () => {
     if (!port) await connect();
     readBuffer = [];
     await sleep(1000);
-    const calibSession = await requestDeviceInfoForCalib();
+    const calibSession = await requestDeviceInfoForCalib('恢复', { useVersionBase: false });
     log(window.t ? window.t('logRestoreCalibration') : '恢复校准数据...', 'info');
     const ts = calibSession.timestamp;
-    let offset = calibEepromBase;
+    let offset = CALIB_V5_BASE;
     for (let i = 0; i < CALIB_SIZE; i += CALIB_CHUNK) {
       updateProgress((i / CALIB_SIZE) * 100);
       const msg = createMessage(MSG_WRITE_EEPROM, 24);
