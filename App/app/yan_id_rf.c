@@ -39,7 +39,6 @@ static uint8_t  s_rx_words;
 static bool     s_rx_capture_active;
 static bool     s_sidecar_armed;
 static bool     s_ignore_next_self_rx;
-static uint8_t  s_ignore_self_ticks;
 static bool     s_bw_lock_active;
 static uint8_t  s_bw_lock_tx_old;
 static uint8_t  s_bw_lock_rx_old;
@@ -155,7 +154,6 @@ static void try_accept_rx(void)
         return;
     if (s_ignore_next_self_rx) {
         s_ignore_next_self_rx = false;
-        s_ignore_self_ticks = 0;
         return;
     }
     memset(gYanId_RX, 0, sizeof(gYanId_RX));
@@ -187,7 +185,6 @@ bool YAN_RF_Send(void)
     BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, false);
     yan_narrow_lock_end();
     s_ignore_next_self_rx = true;
-    s_ignore_self_ticks = 4;
     s_rearm_delay_ticks = 20;
     return true;
 }
@@ -218,6 +215,9 @@ void YAN_RF_DisableRx(void)
     s_sidecar_armed = false;
     s_rx_capture_active = false;
     s_rx_words = 0;
+    BK4819_WriteRegister(BK4819_REG_70, 0);
+    BK4819_WriteRegister(BK4819_REG_72, 0);
+    BK4819_WriteRegister(BK4819_REG_58, 0);
     BK4819_WriteRegister(BK4819_REG_59, 0x0068);
 }
 
@@ -281,14 +281,8 @@ void YAN_RF_Tick10ms(void)
 
 void YAN_RF_Tick500ms(void)
 {
-    if (gYanId_RX_timeout > 0) {
-        if (--gYanId_RX_timeout == 0) {
-            gYanId_RX[0] = 0;
-            gUpdateDisplay = true;
-        }
-    }
-    if (s_ignore_next_self_rx && s_ignore_self_ticks > 0) {
-        if (--s_ignore_self_ticks == 0)
-            s_ignore_next_self_rx = false;
+    if (gYanId_RX_timeout > 0 && --gYanId_RX_timeout == 0) {
+        gYanId_RX[0] = 0;
+        gUpdateDisplay = true;
     }
 }

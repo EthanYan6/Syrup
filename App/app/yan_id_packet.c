@@ -25,8 +25,11 @@ uint8_t YAN_PACKET_BuildYanId(uint8_t *out, uint8_t out_len, const char *from)
     out[5] = YAN_PKT_TYPE_YAN_ID;
     out[9]  = 1;
     out[10] = 1;
-    strncpy((char *)&out[11], from && from[0] ? from : "UVK1", YAN_PKT_CALLSIGN_LEN);
-    strncpy((char *)&out[19], YAN_PKT_TO_ALL, YAN_PKT_CALLSIGN_LEN);
+    if (from && from[0])
+        memcpy(&out[11], from, YAN_PKT_CALLSIGN_LEN);
+    else
+        memcpy(&out[11], "UVK1", 4);
+    memcpy(&out[19], YAN_PKT_TO_ALL, 3);
     crc = YAN_PACKET_Crc16(out, YAN_PKT_WIRE_LEN - 2u);
     out[YAN_PKT_WIRE_LEN - 2u] = (uint8_t)(crc & 0xFFu);
     out[YAN_PKT_WIRE_LEN - 1u] = (uint8_t)(crc >> 8);

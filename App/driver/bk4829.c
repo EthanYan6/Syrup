@@ -1998,10 +1998,7 @@ void BK4819_PlayRogerMDC(void)
 
     SYSTEM_DelayMs(180);
 
-    // Stop FSK TX, reset Tone-2, disable FSK
-    BK4819_WriteRegister(BK4819_REG_59, 0x0068);
-    BK4819_WriteRegister(BK4819_REG_70, 0x0000);
-    BK4819_WriteRegister(BK4819_REG_58, 0x0000);
+    YAN_RF_DisableRx();
 }
 
 void BK4819_PlayRoger(BK4819_FilterBandwidth_t Bandwidth)

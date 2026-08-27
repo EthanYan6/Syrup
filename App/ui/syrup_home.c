@@ -559,7 +559,8 @@ static void draw_channel_row(uint8_t vfo)
 		    VfoStateStr[VfoState[vfo]][0] != '\0') {
 			snprintf(String, sizeof(String), "%s", VfoStateStr[VfoState[vfo]]);
 		} else if (show_yan) {
-			snprintf(String, sizeof(String), "%s", gYanId_RX);
+			strncpy(String, gYanId_RX, sizeof(String) - 1u);
+			String[sizeof(String) - 1u] = 0;
 		} else {
 			SETTINGS_FetchChannelName(String, gEeprom.ScreenChannel[vfo]);
 			if (String[0] == 0) {
