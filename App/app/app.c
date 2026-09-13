@@ -2357,7 +2357,6 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             // clear the live DTMF decoder
             if (gDTMF_RX_live[0] != 0) {
                 DTMF_clear_input_box_memory();
-                gDTMF_RX_live_timeout = 0;
                 gUpdateDisplay        = true;
             }
 
@@ -2679,6 +2678,8 @@ Skip:
     }
 
     if (gVfoConfigureMode != VFO_CONFIGURE_NONE) {
+        DTMF_clear_input_box();
+        DTMF_clear_input_box_memory();
         if (gFlagResetVfos) {
             RADIO_ConfigureChannel(0, gVfoConfigureMode);
             RADIO_ConfigureChannel(1, gVfoConfigureMode);

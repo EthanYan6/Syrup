@@ -1,4 +1,5 @@
 #include "app/chFrScanner.h"
+#include "app/dtmf.h"
 #include "audio.h"
 #include "functions.h"
 #include "misc.h"
@@ -47,6 +48,7 @@ void COMMON_SwitchVFOs()
     gFlagReconfigureVfos  = true;
     gScheduleDualWatch = true;
 
+    DTMF_clear_input_box();
     gRequestDisplayScreen = DISPLAY_MAIN;
 }
 

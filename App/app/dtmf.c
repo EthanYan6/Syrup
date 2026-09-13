@@ -214,12 +214,13 @@ DTMF_CallMode_t DTMF_CheckGroupCall(const char *pMsg, const unsigned int size)
 #endif
 
 void DTMF_clear_input_box_memory() {
-    memset(gDTMF_RX_live, 0, sizeof(gDTMF_RX_live));
+    gDTMF_RX_live_timeout = 0;
+    gDTMF_RX_live[0]      = 0;
 }
 
 void DTMF_clear_input_box(void)
 {
-    memset(gDTMF_InputBox, 0, sizeof(gDTMF_InputBox));
+    gDTMF_InputBox[0]    = 0;
     gDTMF_InputBox_Index = 0;
     gDTMF_InputMode      = false;
 }

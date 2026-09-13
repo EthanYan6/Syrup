@@ -1016,6 +1016,8 @@ static void MAIN_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
                 BK4819_SetFrequency(frequency);
                 BK4819_RX_TurnOn();
                 gRequestSaveChannel = 1;
+                DTMF_clear_input_box();
+                DTMF_clear_input_box_memory();
                 return;
             }
 
