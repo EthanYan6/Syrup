@@ -334,9 +334,8 @@ const char* const gSubMenu_ROGER[] =
     "ROGER",
     "MDC",
     "Yan ID",
-    "Custom 1",
-    "Custom 2",
-    "Custom 3"
+    "Call",
+    "Custom"
 };
 
 const char* const gSubMenu_RESET[] =

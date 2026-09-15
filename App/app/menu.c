@@ -1490,9 +1490,8 @@ void MENU_AcceptSetting(void)
 static const uint8_t gRogerPreviewModes[] = {
     ROGER_MODE_OFF,
     ROGER_MODE_ROGER,
-    ROGER_MODE_STALK1,
-    ROGER_MODE_CUSTOM2,
-    ROGER_MODE_CUSTOM3,
+    ROGER_MODE_CALL,
+    ROGER_MODE_CUSTOM,
 };
 
 static uint8_t MENU_RogerPreviewModeCount(void)

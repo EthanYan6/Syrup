@@ -209,6 +209,14 @@ const BOOT_SOUND_REGION_SIZE = 0xA000;
 const BOOT_SOUND_PCM_MAX     = BOOT_SOUND_REGION_SIZE - BOOT_SOUND_HEADER_SIZE;
 const BOOT_SOUND_RATE_HZ     = 8000;
 const BOOT_SOUND_MAGIC_BYTES = [0x53, 0x59, 0x52, 0x53]; /* SYRS */
+/** helper/roger_tone.c — 4 KB sector, magic SYRT + note pairs for custom Roger */
+const ROGER_TONE_FLASH_ADDR  = 0x01D000;
+const ROGER_TONE_HEADER_SIZE = 16;
+const ROGER_TONE_MAX_NOTES   = 128;
+const ROGER_TONE_MAGIC_BYTES = [0x53, 0x59, 0x52, 0x54]; /* SYRT */
+const ROGER_TONE_F_MIN       = 100;
+const ROGER_TONE_F_MAX       = 3000;
+const ROGER_TONE_MS_MAX      = 2000;
 const CALIB_CHUNK         = 16;
 
 /** 配置数据在 SPI Flash 中的起始地址和大小（与 App/settings.c 中的存储位置一致） */
@@ -5878,6 +5886,457 @@ flashStepsInitFloatingTooltips();
       uploadBtn.disabled = !pcmU8;
       previewBtn.disabled = !pcmU8;
       setTimeout(function() { setMediaTabProgress('bootSound', 0, false); }, 800);
+    }
+  });
+})();
+
+// ========== CUSTOM ROGER TONE ==========
+(function initRogerToneTab() {
+  const fileInput = $('rogerToneFile');
+  const fileNameEl = $('rogerToneFileName');
+  const statusEl = $('rogerToneStatus');
+  const previewBtn = $('rogerTonePreviewBtn');
+  const stopBtn = $('rogerToneStopBtn');
+  const uploadBtn = $('rogerToneUploadBtn');
+  const clearBtn = $('rogerToneClearBtn');
+  const downloadBox = $('rogerToneDownload');
+  const downloadLink = $('rogerToneDownloadLink');
+
+  if (!fileInput || !uploadBtn) return;
+
+  /** @type {{freq:number, ms:number}[]|null} */
+  let notes = null;
+  let previewCtx = null;
+  let previewNodes = [];
+  let downloadObjectUrl = null;
+
+  function tKey(key, fallback, params) {
+    if (window.t) return window.t(key, params || {});
+    let s = fallback;
+    if (params) {
+      Object.keys(params).forEach(function(k) {
+        s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), String(params[k]));
+      });
+    }
+    return s;
+  }
+
+  function setStatus(text) {
+    if (statusEl) statusEl.textContent = text || '';
+  }
+
+  function stopPreview() {
+    previewNodes.forEach(function(n) {
+      try { n.stop(); } catch (e) { /* ignore */ }
+      try { n.disconnect(); } catch (e2) { /* ignore */ }
+    });
+    previewNodes = [];
+    if (previewCtx) {
+      try { previewCtx.close(); } catch (e3) { /* ignore */ }
+      previewCtx = null;
+    }
+    if (stopBtn) stopBtn.disabled = true;
+  }
+
+  function clampFreq(f) {
+    if (!isFinite(f) || f <= 0) return 0;
+    if (f < ROGER_TONE_F_MIN) return ROGER_TONE_F_MIN;
+    if (f > ROGER_TONE_F_MAX) return ROGER_TONE_F_MAX;
+    return Math.round(f);
+  }
+
+  /** Autocorrelation F0 for one window; returns 0 if no pitch. */
+  function estimateF0(data, start, winLen, sampleRate) {
+    let energy = 0;
+    for (let i = 0; i < winLen; i++) {
+      const v = data[start + i] || 0;
+      energy += v * v;
+    }
+    energy /= winLen;
+    if (energy < 1e-5) return 0;
+
+    const minLag = Math.floor(sampleRate / ROGER_TONE_F_MAX);
+    const maxLag = Math.min(Math.floor(sampleRate / ROGER_TONE_F_MIN), winLen - 1);
+    if (maxLag <= minLag) return 0;
+
+    let bestLag = 0;
+    let bestCorr = 0;
+    let corr0 = 0;
+    for (let i = 0; i < winLen; i++) {
+      const v = data[start + i] || 0;
+      corr0 += v * v;
+    }
+    if (corr0 < 1e-8) return 0;
+
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let corr = 0;
+      const n = winLen - lag;
+      for (let i = 0; i < n; i++) {
+        corr += (data[start + i] || 0) * (data[start + i + lag] || 0);
+      }
+      corr /= corr0;
+      if (corr > bestCorr) {
+        bestCorr = corr;
+        bestLag = lag;
+      }
+    }
+    if (bestCorr < 0.35 || bestLag <= 0) return 0;
+    return sampleRate / bestLag;
+  }
+
+  /**
+   * Extract note list from decoded AudioBuffer.
+   * Frames ~30 ms; merge similar consecutive pitches; cap duration/notes.
+   */
+  function extractNotesFromAudioBuffer(audioBuf) {
+    const sampleRate = audioBuf.sampleRate;
+    const srcLen = audioBuf.length;
+    const nCh = audioBuf.numberOfChannels;
+    const mono = new Float32Array(srcLen);
+    for (let ch = 0; ch < nCh; ch++) {
+      const data = audioBuf.getChannelData(ch);
+      for (let i = 0; i < srcLen; i++) mono[i] += data[i] / nCh;
+    }
+
+    const maxSamples = Math.min(srcLen, Math.floor(sampleRate * 2.2));
+    const winLen = Math.floor(sampleRate * 0.03);
+    const hop = Math.floor(sampleRate * 0.02);
+    if (winLen < 32 || hop < 8) return [];
+
+    const raw = [];
+    for (let pos = 0; pos + winLen <= maxSamples; pos += hop) {
+      const f0 = estimateF0(mono, pos, winLen, sampleRate);
+      raw.push({ freq: f0 ? clampFreq(f0) : 0, ms: (hop / sampleRate) * 1000 });
+    }
+    if (!raw.length) return [];
+
+    // Merge consecutive similar frames into notes
+    const merged = [];
+    for (let i = 0; i < raw.length; i++) {
+      const cur = raw[i];
+      const last = merged[merged.length - 1];
+      const sameKind = !!last && ((last.freq === 0 && cur.freq === 0) ||
+        (last.freq !== 0 && cur.freq !== 0 &&
+          Math.abs(last.freq - cur.freq) <= Math.max(25, last.freq * 0.06)));
+      if (sameKind) {
+        last.ms += cur.ms;
+        if (cur.freq) last.freq = Math.round((last.freq + cur.freq) / 2);
+      } else {
+        merged.push({ freq: cur.freq, ms: cur.ms });
+      }
+    }
+
+    // Snap durations to 10 ms, drop tiny fragments, cap total
+    let out = [];
+    let total = 0;
+    for (let i = 0; i < merged.length; i++) {
+      let ms = Math.round(merged[i].ms / 10) * 10;
+      if (ms < 20) continue;
+      if (ms > ROGER_TONE_MS_MAX) ms = ROGER_TONE_MS_MAX;
+      if (total + ms > 2200) {
+        ms = 2200 - total;
+        if (ms < 20) break;
+      }
+      out.push({ freq: merged[i].freq, ms: ms });
+      total += ms;
+      if (out.length >= ROGER_TONE_MAX_NOTES) break;
+    }
+
+    // Prefer audible notes; if everything was silence, fail
+    const hasTone = out.some(function(n) { return n.freq > 0; });
+    if (!hasTone) return [];
+
+    // Trim leading/trailing silence gaps longer than needed
+    while (out.length && out[0].freq === 0) out.shift();
+    while (out.length && out[out.length - 1].freq === 0) out.pop();
+    return out;
+  }
+
+  function notesTotalMs(list) {
+    return list.reduce(function(s, n) { return s + n.ms; }, 0);
+  }
+
+  function buildBlob(list) {
+    const count = list.length;
+    const body = ROGER_TONE_HEADER_SIZE + count * 4;
+    const blob = new Uint8Array(body);
+    for (let i = 0; i < 4; i++) blob[i] = ROGER_TONE_MAGIC_BYTES[i];
+    blob[4] = 1;
+    blob[5] = 0;
+    blob[6] = count & 0xff;
+    blob[7] = (count >> 8) & 0xff;
+    for (let i = 0; i < count; i++) {
+      const off = ROGER_TONE_HEADER_SIZE + i * 4;
+      const f = list[i].freq & 0xffff;
+      const ms = list[i].ms & 0xffff;
+      blob[off] = f & 0xff;
+      blob[off + 1] = (f >> 8) & 0xff;
+      blob[off + 2] = ms & 0xff;
+      blob[off + 3] = (ms >> 8) & 0xff;
+    }
+    return blob;
+  }
+
+  function writeAscii(view, offset, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  }
+
+  /** Synthesize square-ish buzz WAV for download (matches radio-ish beep). */
+  function notesToWavBlob(list) {
+    const rate = 8000;
+    const totalMs = notesTotalMs(list);
+    const n = Math.max(1, Math.floor((totalMs / 1000) * rate));
+    const pcm = new Uint8Array(n);
+    let idx = 0;
+    for (let i = 0; i < list.length; i++) {
+      const note = list[i];
+      const len = Math.floor((note.ms / 1000) * rate);
+      if (note.freq > 0) {
+        const period = rate / note.freq;
+        for (let s = 0; s < len && idx < n; s++, idx++) {
+          const phase = (s % period) / period;
+          pcm[idx] = phase < 0.5 ? 220 : 36;
+        }
+      } else {
+        for (let s = 0; s < len && idx < n; s++, idx++) pcm[idx] = 128;
+      }
+    }
+    while (idx < n) pcm[idx++] = 128;
+
+    const buffer = new ArrayBuffer(44 + n);
+    const view = new DataView(buffer);
+    writeAscii(view, 0, 'RIFF');
+    view.setUint32(4, 36 + n, true);
+    writeAscii(view, 8, 'WAVE');
+    writeAscii(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true);
+    view.setUint32(28, rate, true);
+    view.setUint16(32, 1, true);
+    view.setUint16(34, 8, true);
+    writeAscii(view, 36, 'data');
+    view.setUint32(40, n, true);
+    new Uint8Array(buffer, 44).set(pcm);
+    return new Blob([buffer], { type: 'audio/wav' });
+  }
+
+  function refreshDownloadLink() {
+    if (!downloadBox || !downloadLink) return;
+    if (downloadObjectUrl) {
+      try { URL.revokeObjectURL(downloadObjectUrl); } catch (e) { /* ignore */ }
+      downloadObjectUrl = null;
+    }
+    if (!notes || !notes.length) {
+      downloadBox.style.display = 'none';
+      downloadLink.removeAttribute('href');
+      return;
+    }
+    downloadObjectUrl = URL.createObjectURL(notesToWavBlob(notes));
+    downloadLink.href = downloadObjectUrl;
+    downloadLink.download = 'roger_tone.wav';
+    downloadBox.style.display = 'block';
+  }
+
+  function updateReadyUi(statusOverride) {
+    if (!notes || !notes.length) {
+      previewBtn.disabled = true;
+      uploadBtn.disabled = true;
+      refreshDownloadLink();
+      if (statusOverride) setStatus(statusOverride);
+      return;
+    }
+    previewBtn.disabled = false;
+    uploadBtn.disabled = false;
+    refreshDownloadLink();
+    if (statusOverride) {
+      setStatus(statusOverride);
+      return;
+    }
+    const sec = (notesTotalMs(notes) / 1000).toFixed(2);
+    setStatus(tKey('rogerToneReady', '已提取 {count} 个音符，约 {sec} 秒。可试听蜂鸣或写入对讲机。', {
+      count: notes.length,
+      sec: sec
+    }));
+  }
+
+  async function decodeFileToNotes(file) {
+    const ab = await file.arrayBuffer();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const tmpCtx = new AudioCtx();
+    let audioBuf;
+    try {
+      audioBuf = await tmpCtx.decodeAudioData(ab.slice(0));
+    } finally {
+      try { await tmpCtx.close(); } catch (e) { /* ignore */ }
+    }
+    return extractNotesFromAudioBuffer(audioBuf);
+  }
+
+  fileInput.addEventListener('change', async function(e) {
+    const file = e.target.files && e.target.files[0];
+    stopPreview();
+    notes = null;
+    previewBtn.disabled = true;
+    uploadBtn.disabled = true;
+    refreshDownloadLink();
+    if (!file) {
+      if (fileNameEl) fileNameEl.textContent = tKey('noFileSelected', '未选择文件');
+      setStatus('');
+      return;
+    }
+    if (fileNameEl) fileNameEl.textContent = file.name;
+    setStatus('…');
+    try {
+      notes = await decodeFileToNotes(file);
+      if (!notes.length) {
+        updateReadyUi('');
+        setStatus('');
+        log(tKey('rogerToneNoNotes', '未能从该音频提取到有效音高，请换口哨/铃声等单音色素材'), 'error');
+        return;
+      }
+      updateReadyUi();
+    } catch (err) {
+      notes = null;
+      updateReadyUi('');
+      setStatus('');
+      log(tKey('logRogerToneConvertFail', '尾音转换失败: {msg}', { msg: err.message || String(err) }), 'error');
+    }
+  });
+
+  previewBtn.addEventListener('click', async function() {
+    if (!notes || !notes.length) {
+      log(tKey('rogerToneNeedConvert', '请先选择音频并等待转换完成'), 'error');
+      return;
+    }
+    stopPreview();
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      previewCtx = new AudioCtx();
+      if (previewCtx.state === 'suspended') {
+        await previewCtx.resume();
+      }
+      let t = previewCtx.currentTime + 0.05;
+      notes.forEach(function(note) {
+        if (note.freq > 0) {
+          const osc = previewCtx.createOscillator();
+          const gain = previewCtx.createGain();
+          osc.type = 'square';
+          osc.frequency.value = note.freq;
+          gain.gain.value = 0.12;
+          osc.connect(gain);
+          gain.connect(previewCtx.destination);
+          osc.start(t);
+          osc.stop(t + note.ms / 1000);
+          previewNodes.push(osc);
+        }
+        t += note.ms / 1000;
+      });
+      stopBtn.disabled = false;
+      setTimeout(function() {
+        stopBtn.disabled = true;
+        previewNodes = [];
+        if (previewCtx) {
+          try { previewCtx.close(); } catch (e) { /* ignore */ }
+          previewCtx = null;
+        }
+      }, (notesTotalMs(notes) + 200));
+    } catch (err) {
+      log(tKey('logRogerTonePreviewFail', '试听失败: {msg}', { msg: err.message || String(err) }), 'error');
+      stopPreview();
+    }
+  });
+
+  stopBtn.addEventListener('click', function() {
+    stopPreview();
+  });
+
+  uploadBtn.addEventListener('click', async function() {
+    if (!notes || !notes.length) {
+      log(tKey('rogerToneNeedConvert', '请先选择音频并等待转换完成'), 'error');
+      return;
+    }
+    if (!port) {
+      try {
+        await connect();
+      } catch (e) {
+        log(window.t ? window.t('logConnectFailed', { msg: e.message }) : '连接失败: ' + e.message, 'error');
+        return;
+      }
+    }
+    try {
+      isFlashing = true;
+      uploadBtn.disabled = true;
+      clearBtn.disabled = true;
+      setMediaTabProgress('rogerTone', 0, true);
+      log(tKey('logUploadingRogerTone', '正在写入自定义尾音...'), 'info');
+      const session = await requestDeviceInfoForCalib();
+      const ts = session.timestamp;
+      const blob = buildBlob(notes);
+
+      log(tKey('logErasingRogerTone', '正在擦除尾音 Flash 区...'), 'info');
+      await spiFlashEraseRange(ts, ROGER_TONE_FLASH_ADDR, blob.length, function(p) {
+        setMediaTabProgress('rogerTone', p * 20, true);
+      });
+
+      let written = 0;
+      for (let off = 0; off < blob.length; off += SPI_CHUNK_SIZE) {
+        const chunkLen = Math.min(SPI_CHUNK_SIZE, blob.length - off);
+        const chunk = blob.slice(off, off + chunkLen);
+        const ok = await spiFlashWriteChunk(ts, ROGER_TONE_FLASH_ADDR + off, chunk);
+        if (!ok) throw new Error('写入尾音失败 @ 0x' + (ROGER_TONE_FLASH_ADDR + off).toString(16));
+        written += chunkLen;
+        setMediaTabProgress('rogerTone', 20 + (written / blob.length) * 80, true);
+        await sleep(40);
+      }
+      setMediaTabProgress('rogerTone', 100, true);
+      updateReadyUi(tKey('logRogerToneUploadSuccess', '自定义尾音写入成功！菜单「发射尾音」选「自定义」后松开 PTT 即可发射'));
+      log(tKey('logRogerToneUploadSuccess', '自定义尾音写入成功！菜单「发射尾音」选「自定义」后松开 PTT 即可发射'), 'success');
+    } catch (e) {
+      log(window.t ? window.t('logUploadFailed', { msg: e.message }) : '上传失败: ' + e.message, 'error');
+    } finally {
+      isFlashing = false;
+      uploadBtn.disabled = !notes;
+      clearBtn.disabled = false;
+      setTimeout(function() { setMediaTabProgress('rogerTone', 0, false); }, 800);
+    }
+  });
+
+  clearBtn.addEventListener('click', async function() {
+    if (!port) {
+      try {
+        await connect();
+      } catch (e) {
+        log(window.t ? window.t('logConnectFailed', { msg: e.message }) : '连接失败: ' + e.message, 'error');
+        return;
+      }
+    }
+    try {
+      isFlashing = true;
+      clearBtn.disabled = true;
+      uploadBtn.disabled = true;
+      setMediaTabProgress('rogerTone', 0, true);
+      log(tKey('logClearingRogerTone', '正在清除自定义尾音...'), 'info');
+      const session = await requestDeviceInfoForCalib();
+      const ts = session.timestamp;
+      await spiFlashEraseRange(ts, ROGER_TONE_FLASH_ADDR, 1, function(p) {
+        setMediaTabProgress('rogerTone', p * 100, true);
+      });
+      setMediaTabProgress('rogerTone', 100, true);
+      stopPreview();
+      notes = null;
+      if (fileNameEl) fileNameEl.textContent = tKey('noFileSelected', '未选择文件');
+      updateReadyUi(tKey('logRogerToneCleared', '已清除自定义尾音，自定义槽将回退为电话音'));
+      log(tKey('logRogerToneCleared', '已清除自定义尾音，自定义槽将回退为电话音'), 'success');
+    } catch (e) {
+      log(window.t ? window.t('logUploadFailed', { msg: e.message }) : '上传失败: ' + e.message, 'error');
+    } finally {
+      isFlashing = false;
+      clearBtn.disabled = false;
+      uploadBtn.disabled = !notes;
+      previewBtn.disabled = !notes;
+      setTimeout(function() { setMediaTabProgress('rogerTone', 0, false); }, 800);
     }
   });
 })();

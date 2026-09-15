@@ -308,12 +308,12 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     {
         uint8_t roger = Data[1];
 
-        /* 6 was old Custom 3 (car, removed); 7 was frog before rename/compact. */
-        if (roger == 6)
-            roger = ROGER_MODE_OFF;
-        else if (roger == 7)
-            roger = ROGER_MODE_CUSTOM3;
-        else if (roger > ROGER_MODE_CUSTOM3)
+        /* Legacy: 4=Custom1/Stalk1, 5=Custom2 → Call; 6=Custom3 → Custom. */
+        if (roger == 4 || roger == 5)
+            roger = ROGER_MODE_CALL;
+        else if (roger == 6)
+            roger = ROGER_MODE_CUSTOM;
+        else if (roger > ROGER_MODE_CUSTOM)
             roger = ROGER_MODE_OFF;
         gEeprom.ROGER = roger;
     }

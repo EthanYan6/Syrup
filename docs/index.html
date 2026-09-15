@@ -267,6 +267,7 @@
           <button class="tab" type="button" data-tab="basicinfo" id="tabBasicinfo" data-i18n="tabBasicinfo">基础信息</button>
           <button class="tab" type="button" data-tab="logo" id="tabLogo" data-i18n="tabLogo">开机图片</button>
           <button class="tab" type="button" data-tab="bootsound" id="tabBootSound" data-i18n="tabBootSound">开机音效</button>
+          <button class="tab" type="button" data-tab="rogertone" id="tabRogerTone" data-i18n="tabRogerTone">自定义尾音</button>
           <button class="tab" type="button" data-tab="materials" id="tabMaterials" data-i18n="tabMaterials">素材下载</button>
           <button class="tab" type="button" data-tab="radar" id="tabRadar" data-i18n="tabRadar">飞机雷达探测</button>
           <button class="tab" type="button" data-tab="aprs" id="tabAprs" data-i18n="tabAprs">APRS探测</button>
@@ -671,6 +672,49 @@
           </div>
         </div>
 
+        <!-- CUSTOM ROGER TONE -->
+        <div class="tab-content" id="rogertone-content">
+          <section class="section">
+            <p class="logo-desc" data-i18n="rogerToneDesc">
+              上传 MP3 / WAV 等音频，网页会提取主音高轮廓，转成可在对讲机上发射的蜂鸣音符序列（不是原声波形）。写入后在菜单「发射尾音」里选「自定义 / Custom」即可。未上传或清除后，自定义槽回退为电话音。
+            </p>
+            <p class="logo-warning" data-i18n="rogerToneHint">
+              提示：对方听到的是近似旋律的蜂鸣，不是人声或复杂音效。建议用口哨、简单铃声、单音色音效；整首歌或说话声效果有限。最长约 2 秒、最多 128 个音符。
+            </p>
+            <p class="logo-warning" data-i18n="logoWarning">
+              ⚠️ 请先<strong>正常开机进入使用界面</strong>后再连接 USB 操作（与刷字库、备份校准相同，无需 BOOT 模式）。
+            </p>
+          </section>
+
+          <section class="section">
+            <label data-i18n="selectAudio">选择音频</label>
+            <div class="file-input-wrapper">
+              <input type="file" id="rogerToneFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac" aria-label="选择尾音音频">
+              <div class="file-input-label" id="rogerToneFileLabel">
+                <span class="file-name" id="rogerToneFileName" data-i18n="noFileSelected">未选择文件</span>
+                <span class="file-button" data-i18n="selectAudio">选择音频</span>
+              </div>
+            </div>
+            <p class="boot-sound-status" id="rogerToneStatus" aria-live="polite"></p>
+          </section>
+
+          <div class="logo-actions boot-sound-actions">
+            <button type="button" id="rogerTonePreviewBtn" disabled data-i18n="previewRogerTone">试听蜂鸣</button>
+            <button type="button" id="rogerToneStopBtn" disabled data-i18n="stopBootSoundPreview">停止</button>
+            <button type="button" id="rogerToneUploadBtn" disabled data-i18n="uploadRogerTone">写入自定义尾音</button>
+            <button type="button" id="rogerToneClearBtn" data-i18n="clearRogerTone">清除自定义尾音</button>
+          </div>
+          <div class="tab-progress" id="rogerToneProgress" hidden>
+            <div class="progress-bar">
+              <div class="progress-fill" id="rogerToneProgressFill"></div>
+              <div class="progress-label" id="rogerToneProgressLabel">0%</div>
+            </div>
+          </div>
+          <div class="download-link" id="rogerToneDownload" style="display:none;">
+            <a href="#" id="rogerToneDownloadLink" download="roger_tone.wav" data-i18n="downloadRogerTone">下载 roger_tone.wav</a>
+          </div>
+        </div>
+
         <!-- MATERIALS DOWNLOAD -->
         <div class="tab-content" id="materials-content">
           <section class="section">
@@ -901,9 +945,9 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-  <script src="js/min/lang.js?v=20260825materials"></script>
+  <script src="js/lang.js?v=20260827roger"></script>
   <script src="js/min/gb2312_codec.js?v=20260824obf"></script>
-  <script src="js/min/flash.js?v=20260827calib"></script>
+  <script src="js/flash.js?v=20260827roger"></script>
   <script src="js/min/airline_icao.js?v=20260824obf"></script>
   <script src="js/min/radar.js?v=20260824worker"></script>
   <script src="js/min/aprs.js?v=20260825aprs6"></script>

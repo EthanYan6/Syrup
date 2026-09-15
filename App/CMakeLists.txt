@@ -38,6 +38,7 @@ target_sources(App INTERFACE
     helper/battery.c
     helper/boot.c
     helper/boot_sound.c
+    helper/roger_tone.c
     misc.c
     radio.c
     scheduler.c
@@ -59,7 +60,7 @@ target_sources(App INTERFACE
     external/printf/printf.c
 )
 
-set_source_files_properties(helper/boot_sound.c PROPERTIES COMPILE_OPTIONS "-Oz")
+set_source_files_properties(helper/boot_sound.c helper/roger_tone.c PROPERTIES COMPILE_OPTIONS "-Oz")
 
 
 macro(enable_feature feature)

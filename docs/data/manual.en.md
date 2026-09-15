@@ -167,6 +167,10 @@ During send/receive the radio briefly switches to narrowband, then restores the 
 
 The callsign is stored in SPI flash and survives unplug / reboot. A factory reset or erase of that sector clears it.
 
+### Custom Roger tone
+
+Menu **Roger → Custom** uses a note sequence written from the web flasher’s **Custom Roger** tab (upload MP3/WAV; the page extracts a pitch contour). The other side hears an approximate beep melody, not the original voice. With no upload, Custom falls back to **Call**.
+
 ## 8. Aircraft radar
 
 Dedicated **Aircraft radar** page: FM-style status chrome; airplane icon + inverted large callsign; then left-aligned, evenly spaced altitude / distance / airband AM frequency. Labels follow menu **Language**.

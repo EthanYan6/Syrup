@@ -31,6 +31,7 @@
 
 #include "driver/bk4819.h"
 #include "app/yan_id_rf.h"
+#include "helper/roger_tone.h"
 #include "driver/gpio.h"
 #include "radio.h"
 #include "driver/system.h"
@@ -1862,33 +1863,9 @@ static void BK4819_PlaySequencePreview(const uint16_t *Sequence)
     BK4819_RogerPreviewEnd(&ctx);
 }
 
-static const uint16_t gRogerSeq_Stalk1[] = {
-    1975, 80, 0, 10, 2100, 100, 0, 10, 3140, 80,
-    0, 10, 2800, 100, 0, 10, 0, 0
-};
-
-static const uint16_t gRogerSeq_Custom2[] = {
+static const uint16_t gRogerSeq_Call[] = {
     430, 350, 0, 350, 430, 350, 0, 350, 430, 350, 0, 0
 };
-
-/* Single ribbit: sharp mid-high drop. */
-static const uint16_t gRogerSeq_Custom3[] = {
-    1650, 40, 1100, 50, 750, 65, 0, 0
-};
-
-static const uint16_t *BK4819_RogerSequenceForMode(ROGER_Mode_t mode)
-{
-    switch (mode) {
-    case ROGER_MODE_STALK1:
-        return gRogerSeq_Stalk1;
-    case ROGER_MODE_CUSTOM2:
-        return gRogerSeq_Custom2;
-    case ROGER_MODE_CUSTOM3:
-        return gRogerSeq_Custom3;
-    default:
-        return NULL;
-    }
-}
 
 static void BK4819_PlayRogerMDCPreview(void)
 {
@@ -2009,11 +1986,12 @@ void BK4819_PlayRoger(BK4819_FilterBandwidth_t Bandwidth)
         BK4819_PlayRogerMDC();
     } else if (gEeprom.ROGER == ROGER_MODE_YAN_ID) {
         (void)YAN_RF_Send();
-    } else {
-        const uint16_t *seq = BK4819_RogerSequenceForMode(gEeprom.ROGER);
+    } else if (gEeprom.ROGER == ROGER_MODE_CUSTOM) {
+        const uint16_t *seq = ROGER_TONE_Sequence();
 
-        if (seq != NULL)
-            BK4819_PlaySequence(seq);
+        BK4819_PlaySequence(seq != NULL ? seq : gRogerSeq_Call);
+    } else if (gEeprom.ROGER == ROGER_MODE_CALL) {
+        BK4819_PlaySequence(gRogerSeq_Call);
     }
 }
 
@@ -2045,14 +2023,12 @@ void BK4819_PlayRogerPreview(uint8_t mode)
             BK4819_RogerPreviewEnd(&ctx);
         }
         break;
-    case ROGER_MODE_STALK1:
-    case ROGER_MODE_CUSTOM2:
-    case ROGER_MODE_CUSTOM3:
+    case ROGER_MODE_CALL:
+    case ROGER_MODE_CUSTOM:
         {
-            const uint16_t *seq = BK4819_RogerSequenceForMode((ROGER_Mode_t)mode);
+            const uint16_t *seq = (mode == ROGER_MODE_CUSTOM) ? ROGER_TONE_Sequence() : gRogerSeq_Call;
 
-            if (seq != NULL)
-                BK4819_PlaySequencePreview(seq);
+            BK4819_PlaySequencePreview(seq != NULL ? seq : gRogerSeq_Call);
         }
         break;
     default:

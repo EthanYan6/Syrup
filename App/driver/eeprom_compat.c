@@ -91,6 +91,8 @@ static const AddrMapping_t ADDR_MAPPINGS[] = {
     // 0x012000: Mangosteen messenger (leave free for multi-FW coexistence)
     // 0x013000..0x01CFFF: Syrup boot sound (40 KB) — magic "SYRS" + u8 PCM @ 8 kHz
     //                       accessed by helper/boot_sound.c via PY25Q16_*
+    // 0x01D000..0x01DFFF: Syrup custom Roger tones (4 KB) — magic "SYRT" + note pairs
+    //                       accessed by helper/roger_tone.c via PY25Q16_*
     // 0x1E0000..0x1E7FFF: RX/TX append-only log * 32 KB
     //                       (ENABLE_FEAT_F4HWN_RXTX_LOG, app/rxtx_log.c)
 };
