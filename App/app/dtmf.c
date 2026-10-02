@@ -40,9 +40,8 @@ uint8_t           gDTMF_InputBox_Index = 0;
 bool              gDTMF_InputMode      = false;
 uint8_t           gDTMF_PreviousIndex  = 0;
 
-char              gDTMF_RX_live[20];
-uint8_t           gDTMF_RX_live_timeout = 0;
-uint8_t           gDTMF_RX_live_vfo     = 0;
+char              gDTMF_RX_live[3][20];
+uint8_t           gDTMF_RX_live_timeout[3];
 
 #ifdef ENABLE_DTMF_CALLING
 char              gDTMF_RX[17];
@@ -214,8 +213,17 @@ DTMF_CallMode_t DTMF_CheckGroupCall(const char *pMsg, const unsigned int size)
 #endif
 
 void DTMF_clear_input_box_memory() {
-    gDTMF_RX_live_timeout = 0;
-    gDTMF_RX_live[0]      = 0;
+    memset(gDTMF_RX_live, 0, sizeof(gDTMF_RX_live));
+    memset(gDTMF_RX_live_timeout, 0, sizeof(gDTMF_RX_live_timeout));
+}
+
+/* Clear the live decode of one VFO only — used when that channel is
+ * retuned with the navigation keys; A/B switching keeps each VFO's decode */
+void DTMF_clear_RX_live(uint8_t vfo) {
+    if (vfo > 2u)
+        vfo = 2u;
+    gDTMF_RX_live_timeout[vfo] = 0;
+    gDTMF_RX_live[vfo][0]      = 0;
 }
 
 void DTMF_clear_input_box(void)

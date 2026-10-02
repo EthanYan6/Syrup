@@ -209,9 +209,7 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
             break;
 
         case KEY_2:
-            #ifdef ENABLE_FEAT_F4HWN
-                gVfoConfigureMode     = VFO_CONFIGURE;
-            #endif
+            /* A/B swap: no VFO reconfigure — each channel keeps its live DTMF */
             COMMON_SwitchVFOs();
             break;
 
@@ -1017,7 +1015,7 @@ static void MAIN_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
                 BK4819_RX_TurnOn();
                 gRequestSaveChannel = 1;
                 DTMF_clear_input_box();
-                DTMF_clear_input_box_memory();
+                DTMF_clear_RX_live(gEeprom.TX_VFO);
                 return;
             }
 

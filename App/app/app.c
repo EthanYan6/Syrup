@@ -940,17 +940,17 @@ static void CheckRadioInterrupts(void)
             if (c != 0xff) {
                 if (gCurrentFunction != FUNCTION_TRANSMIT) {
                     if (gSetting_live_DTMF_decoder) {
-                        size_t len = strlen(gDTMF_RX_live);
-                        if (len >= sizeof(gDTMF_RX_live) - 1) { // make room
-                            memmove(&gDTMF_RX_live[0], &gDTMF_RX_live[1], sizeof(gDTMF_RX_live) - 1);
+                        uint8_t slot = gEeprom.RX_VFO;
+                        if (slot > 2u)
+                            slot = 0u;
+                        size_t len = strlen(gDTMF_RX_live[slot]);
+                        if (len >= sizeof(gDTMF_RX_live[0]) - 1) { // make room
+                            memmove(&gDTMF_RX_live[slot][0], &gDTMF_RX_live[slot][1], sizeof(gDTMF_RX_live[0]) - 1);
                             len--;
                         }
-                        gDTMF_RX_live[len++]  = c;
-                        gDTMF_RX_live[len]    = 0;
-                        gDTMF_RX_live_timeout = DTMF_RX_live_timeout_500ms;  // time till we delete it
-                        gDTMF_RX_live_vfo     = gEeprom.RX_VFO;
-                        if (gDTMF_RX_live_vfo > 2u)
-                            gDTMF_RX_live_vfo = 0u;
+                        gDTMF_RX_live[slot][len++] = c;
+                        gDTMF_RX_live[slot][len]   = 0;
+                        gDTMF_RX_live_timeout[slot] = DTMF_RX_live_timeout_500ms;  // time till we delete it
                         gUpdateDisplay        = true;
                     }
 
@@ -1932,20 +1932,21 @@ void APP_TimeSlice500ms(void)
         }
     }
 
-    if (gDTMF_RX_live_timeout > 0)
+    for (uint8_t v = 0u; v < 3u; v++)
     {
+        if (gDTMF_RX_live_timeout[v] == 0)
+            continue;
         #ifdef ENABLE_RSSI_BAR
-            if (center_line == CENTER_LINE_DTMF_DEC ||
-                center_line == CENTER_LINE_NONE)  // wait till the center line is free for us to use before timing out
+            if (center_line != CENTER_LINE_DTMF_DEC &&
+                center_line != CENTER_LINE_NONE)  // wait till the center line is free for us to use before timing out
+                continue;
         #endif
+        if (--gDTMF_RX_live_timeout[v] == 0)
         {
-            if (--gDTMF_RX_live_timeout == 0)
+            if (gDTMF_RX_live[v][0] != 0)
             {
-                if (gDTMF_RX_live[0] != 0)
-                {
-                    DTMF_clear_input_box_memory();
-                    gUpdateDisplay   = true;
-                }
+                gDTMF_RX_live[v][0] = 0;
+                gUpdateDisplay      = true;
             }
         }
     }
@@ -2355,10 +2356,8 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 #endif
         ) { // exit key held pressed
             // clear the live DTMF decoder
-            if (gDTMF_RX_live[0] != 0) {
-                DTMF_clear_input_box_memory();
-                gUpdateDisplay        = true;
-            }
+            DTMF_clear_input_box_memory();
+            gUpdateDisplay = true;
 
             // cancel user input
             cancelUserInputModes();
@@ -2679,7 +2678,11 @@ Skip:
 
     if (gVfoConfigureMode != VFO_CONFIGURE_NONE) {
         DTMF_clear_input_box();
-        DTMF_clear_input_box_memory();
+        /* the retuned VFO's live DTMF is stale now; other VFOs keep theirs */
+        if (gFlagResetVfos)
+            DTMF_clear_input_box_memory();
+        else
+            DTMF_clear_RX_live(gEeprom.TX_VFO);
         if (gFlagResetVfos) {
             RADIO_ConfigureChannel(0, gVfoConfigureMode);
             RADIO_ConfigureChannel(1, gVfoConfigureMode);

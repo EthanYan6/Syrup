@@ -42,6 +42,9 @@
 #define SH_RIGHT_X_INSET   2u  /* right column shifted left */
 #define SH_GAP_PX          2u
 
+/* CH badge: solid black triangle attached to the inverted box's right edge */
+#define SH_TAG_TRI_W       4u
+
 /* S-meter band: left status column (lock/battery/text) + scale/line/needle */
 #define SH_TICK_PERIOD_10MS  5u   /* ~50ms */
 #define SH_METER_TEXT_H      6u   /* gFont3x5 glyph height */
@@ -72,6 +75,23 @@
 #define SH_SPK_GAP      4u   /* gap between the icon and the name */
 #define SH_SPK_Y_OFF    2u   /* icon drop vs the name row */
 
+/* Channel names wider than 5 hanzi scroll inside a fixed right-anchored field
+ * (Dondji dual-watch scheme): start → scroll left 1px/30ms → hold 2s at the
+ * end → back to start → hold 2s → repeat. The seed resets when the text
+ * changes, so every new name starts from its beginning. */
+#define SH_NAME_HAN_CELL             13u  /* 12px glyph + 1px pitch */
+#define SH_NAME_FIELD_HAN            5u
+#define SH_NAME_FIELD_W              (SH_NAME_FIELD_HAN * SH_NAME_HAN_CELL - 1u)  /* 64px */
+#define SH_NAME_FIELD_R              (LCD_WIDTH - SH_RIGHT_X_INSET - 1u)          /* 125 */
+#define SH_NAME_FIELD_L              (SH_NAME_FIELD_R - SH_NAME_FIELD_W + 1u)     /* 62 */
+#define SH_NAME_SCROLL_TICKS_PER_PX  3u   /* 1px / 30ms */
+#define SH_NAME_PAUSE_TICKS          200u /* 2s @ 10ms */
+
+/* CH badge triangle: solid black, attached to the box's right edge (bit0 = top) */
+static const uint8_t s_tag_tri[SH_TAG_TRI_W] = {
+	0b01111111, 0b00111110, 0b00011100, 0b00001000
+};
+
 /* Megaphone + sound waves (column-major, bit0 = top) */
 static const uint8_t s_spk_bitmap[SH_SPK_W] = {
 	0b00111100,
@@ -99,6 +119,8 @@ static uint32_t s_triple_rx_freq;
 static uint8_t  s_triple_blink;
 static uint8_t  s_tick_div;
 static uint8_t  s_spk_vfo = 0xFF; /* last channel that received — sticky speaker */
+static uint16_t s_spk_ch;
+static uint32_t s_spk_freq;
 
 static void draw_col_bitmap(uint8_t x, uint8_t y_top, const uint8_t *cols, uint8_t w);
 
@@ -140,7 +162,8 @@ static uint16_t utf8_to_unicode(const char *p)
 	                   ((uint8_t)p[2] & 0x3Fu));
 }
 
-static void draw_cjk_glyph_screen(uint16_t unicode, uint8_t x, uint8_t y_top)
+static void draw_cjk_glyph_screen(uint16_t unicode, int16_t x, uint8_t y_top,
+                                  int16_t clip_l, int16_t clip_r)
 {
 	int16_t  spi_index;
 	uint16_t spi_bitmap[12];
@@ -152,8 +175,11 @@ static void draw_cjk_glyph_screen(uint16_t unicode, uint8_t x, uint8_t y_top)
 	for (uint8_t row = 0; row < 12u; row++) {
 		const uint16_t row_data = spi_bitmap[row];
 		for (uint8_t col = 0; col < 12u; col++) {
+			const int16_t px = (int16_t)(x + (int16_t)col);
+			if (px < clip_l || px > clip_r)
+				continue;
 			if (row_data & (uint16_t)(0x8000u >> col))
-				draw_pixel((uint8_t)(x + col), (uint8_t)(y_top + row), true);
+				draw_pixel((uint8_t)px, (uint8_t)(y_top + row), true);
 		}
 	}
 }
@@ -170,9 +196,10 @@ static uint8_t small_text_width(const char *text)
 #endif
 }
 
-static uint8_t draw_small_text(const char *text, uint8_t x, uint8_t y_top, bool black)
+/* x may be negative (scrolling); glyph columns outside [clip_l, clip_r] are skipped */
+static void draw_small_text_ex(const char *text, int16_t x, uint8_t y_top, bool black,
+                               uint8_t clip_l, uint8_t clip_r)
 {
-	const uint8_t left = x;
 #ifdef ENABLE_CHINESE
 	size_t i = 0;
 	const bool mixed_cjk = SETTINGS_ChannelNameHasCjkUtf8(text);
@@ -182,25 +209,29 @@ static uint8_t draw_small_text(const char *text, uint8_t x, uint8_t y_top, bool 
 	while (text[i] != '\0') {
 		if (is_cjk_utf8(&text[i])) {
 			(void)black;
-			draw_cjk_glyph_screen(utf8_to_unicode(&text[i]), x, y_top);
-			x = (uint8_t)(x + 12u + 1u);
+			draw_cjk_glyph_screen(utf8_to_unicode(&text[i]), x, y_top,
+			                      (int16_t)clip_l, (int16_t)clip_r);
+			x = (int16_t)(x + 12u + 1u);
 			i += 3u;
 		} else {
 			const char c = text[i];
 			if (c > ' ' && c < 127) {
 				const unsigned int index = (unsigned int)(c - ' ' - 1);
 				const uint8_t *glyph = gFontSmall[index];
-				const uint8_t gx = (uint8_t)(x + 1u);
 				const uint8_t char_w = (uint8_t)ARRAY_SIZE(gFontSmall[0]);
+				const int16_t gx = (int16_t)(x + 1u);
 				for (uint8_t col = 0; col < char_w; col++) {
 					uint8_t bits = glyph[col];
+					const int16_t px = (int16_t)(gx + (int16_t)col);
+					if (px < (int16_t)clip_l || px > (int16_t)clip_r)
+						continue;
 					for (uint8_t row = 0; row < 8u; row++) {
 						if (bits & (uint8_t)(1u << row))
-							draw_pixel((uint8_t)(gx + col), (uint8_t)(latin_y + row), black);
+							draw_pixel((uint8_t)px, (uint8_t)(latin_y + row), black);
 					}
 				}
 			}
-			x = (uint8_t)(x + (uint8_t)ARRAY_SIZE(gFontSmall[0]) + 1u);
+			x = (int16_t)(x + (uint16_t)ARRAY_SIZE(gFontSmall[0]) + 1u);
 			i++;
 		}
 	}
@@ -214,20 +245,27 @@ static uint8_t draw_small_text(const char *text, uint8_t x, uint8_t y_top, bool 
 		if (c > ' ' && c < 127) {
 			const unsigned int index = (unsigned int)(c - ' ' - 1);
 			const uint8_t *glyph = gFontSmall[index];
-			const uint8_t gx = (uint8_t)(x + 1u);
+			const int16_t gx = (int16_t)(x + 1u);
 			for (uint8_t col = 0; col < char_w; col++) {
 				uint8_t bits = glyph[col];
+				const int16_t px = (int16_t)(gx + (int16_t)col);
+				if (px < (int16_t)clip_l || px > (int16_t)clip_r)
+					continue;
 				for (uint8_t row = 0; row < 8u; row++) {
 					if (bits & (uint8_t)(1u << row))
-						draw_pixel((uint8_t)(gx + col), (uint8_t)(y_top + row), black);
+						draw_pixel((uint8_t)px, (uint8_t)(y_top + row), black);
 				}
 			}
 		}
-		x = (uint8_t)(x + pitch);
+		x = (int16_t)(x + pitch);
 	}
 	}
 #endif
-	return left;
+}
+
+static void draw_small_text(const char *text, uint8_t x, uint8_t y_top, bool black)
+{
+	draw_small_text_ex(text, x, y_top, black, 0u, (uint8_t)(LCD_WIDTH - 1u));
 }
 
 static uint8_t draw_right_small(const char *text, uint8_t y_top)
@@ -319,8 +357,8 @@ static void invert_channel_row(uint8_t vfo)
 	const uint8_t y0 = channel_row_y(vfo);
 	const uint8_t y1 = (uint8_t)(y0 + SH_CH_H - 1u);
 
-	/* Hairline above invert (CH1 uses the 1px left by dropping rows; not painted on invert top) */
-	if (y0 > 0u) {
+	/* Hairline above invert (CH1 uses the 1px left by dropping rows; row tops are always > 0) */
+	{
 		const uint8_t y_bar = (uint8_t)(y0 - 1u);
 		for (uint8_t x = 0; x < LCD_WIDTH; x++)
 			draw_pixel(x, y_bar, true);
@@ -422,11 +460,21 @@ static void remember_triple_rx_tune(void)
 }
 
 /* Speaker icon is sticky: latched on RX, stays on that channel row until
- * some other channel receives. */
+ * some other channel receives — or until that row is retuned with the
+ * navigation keys (channel/memory or frequency changed). */
 static void latch_spk_vfo(void)
 {
-	if (FUNCTION_IsRx() && gEeprom.RX_VFO < 3u)
-		s_spk_vfo = gEeprom.RX_VFO;
+	if (s_spk_vfo < 3u &&
+	    (gEeprom.ScreenChannel[s_spk_vfo] != s_spk_ch ||
+	     gEeprom.VfoInfo[s_spk_vfo].freq_config_RX.Frequency != s_spk_freq)) {
+		s_spk_vfo = 0xFF;
+	}
+
+	if (FUNCTION_IsRx() && gEeprom.RX_VFO < 3u) {
+		s_spk_vfo   = gEeprom.RX_VFO;
+		s_spk_ch    = gEeprom.ScreenChannel[s_spk_vfo];
+		s_spk_freq  = gEeprom.VfoInfo[s_spk_vfo].freq_config_RX.Frequency;
+	}
 }
 
 static void latch_triple_rx(void)
@@ -461,7 +509,7 @@ static void draw_triple_rx_tag(uint8_t vfo)
 	const uint8_t ch_w = smallest_width("CH1");
 	const uint8_t ch_box_x1 = (uint8_t)(2u + ch_w);
 	const uint8_t rx_w = smallest_width("RX");
-	const uint8_t rx_x = (uint8_t)(ch_box_x1 + 3u);
+	const uint8_t rx_x = (uint8_t)(ch_box_x1 + SH_TAG_TRI_W + 3u);
 	const uint8_t rx_box_x0 = (uint8_t)(rx_x - 1u);
 	const uint8_t rx_box_x1 = (uint8_t)(rx_x + rx_w);
 	const uint8_t s_x = (uint8_t)(rx_box_x1 + 3u);
@@ -484,6 +532,36 @@ static void draw_triple_rx_tag(uint8_t vfo)
 	}
 }
 
+/* --- channel-name scroll state (one slot per channel row) --- */
+static uint16_t s_name_seed[3];       /* counter value when the text last changed */
+static uint8_t  s_name_max_off[3];    /* name width − field width */
+static uint8_t  s_name_drawn_off[3];  /* offset used by the last draw */
+static bool     s_name_over[3];       /* this row's name is scrolling */
+static char     s_name_text[3][CHANNEL_NAME_MAX_BYTES + 1u];
+
+static void name_scroll_seed(uint8_t slot, const char *text)
+{
+	if (strncmp(s_name_text[slot], text, sizeof(s_name_text[0])) != 0) {
+		strncpy(s_name_text[slot], text, sizeof(s_name_text[0]) - 1u);
+		s_name_text[slot][sizeof(s_name_text[0]) - 1u] = '\0';
+		s_name_seed[slot]      = gFlashLightBlinkCounter;
+		s_name_drawn_off[slot] = 0u;
+	}
+}
+
+static uint8_t name_scroll_offset(uint8_t slot)
+{
+	const uint16_t scroll_t = (uint16_t)(s_name_max_off[slot] * SH_NAME_SCROLL_TICKS_PER_PX);
+	const uint16_t cycle    = (uint16_t)(scroll_t + 2u * SH_NAME_PAUSE_TICKS);
+	const uint16_t t        = (uint16_t)((uint16_t)(gFlashLightBlinkCounter - s_name_seed[slot]) % cycle);
+
+	if (t < scroll_t)
+		return (uint8_t)(t / SH_NAME_SCROLL_TICKS_PER_PX);
+	if (t < (uint16_t)(scroll_t + SH_NAME_PAUSE_TICKS))
+		return s_name_max_off[slot];
+	return 0u;
+}
+
 static void draw_channel_row(uint8_t vfo)
 {
 	const VFO_Info_t *info = &gEeprom.VfoInfo[vfo];
@@ -496,12 +574,7 @@ static void draw_channel_row(uint8_t vfo)
 	const bool tx_vfo = (vfo == gEeprom.TX_VFO);
 	const bool transmitting =
 		(gCurrentFunction == FUNCTION_TRANSMIT && tx_vfo);
-	const bool show_dtmf_input = gDTMF_InputMode && tx_vfo;
-	const bool show_dtmf =
-		show_dtmf_input ||
-		(gSetting_live_DTMF_decoder &&
-		 gDTMF_RX_live[0] != 0 &&
-		 vfo == gDTMF_RX_live_vfo);
+	const char *dtmf_digits = NULL; /* row 3: DTMF replaces the subtones */
 
 	char String[22];
 	char rx_tone[12];
@@ -520,6 +593,8 @@ static void draw_channel_row(uint8_t vfo)
 		const uint8_t box_y1 = (uint8_t)(badge_y + 5u);
 		fill_rect(box_x0, box_y0, box_x1, box_y1, true);
 		draw_smallest_abs(String, text_x, badge_y, false);
+		/* solid black triangle attached to the box's right edge */
+		draw_col_bitmap((uint8_t)(box_x1 + 1u), box_y0, s_tag_tri, SH_TAG_TRI_W);
 	}
 	draw_triple_rx_tag(vfo);
 
@@ -539,22 +614,29 @@ static void draw_channel_row(uint8_t vfo)
 			         frequency / 100000u, frequency % 100000u);
 	}
 
-	if (show_dtmf) {
-		draw_dtmf_live(param_y,
-		               (uint8_t)(LCD_WIDTH - SH_RIGHT_X_INSET - small_text_width(freq_str)),
-		               show_dtmf_input ? gDTMF_InputBox : gDTMF_RX_live);
-	} else {
-		/* row 2: modulation, bandwidth, power, squelch */
-		x = 1u;
-		x = draw_param(gModulationStr[info->Modulation], x, param_y, true);
-		if (info->Modulation == MODULATION_FM) {
-			x = draw_param(info->CHANNEL_BANDWIDTH == BANDWIDTH_WIDE ? "W" : "N",
-			               x, param_y, true);
-		}
-		x = draw_param(power_letter(info->OUTPUT_POWER), x, param_y, true);
-		snprintf(String, sizeof(String), "%u", (unsigned)gEeprom.SQUELCH_LEVEL);
-		draw_param(String, x, param_y, true);
+	/* row 2: modulation, bandwidth, power, squelch */
+	x = 1u;
+	x = draw_param(gModulationStr[info->Modulation], x, param_y, true);
+	if (info->Modulation == MODULATION_FM) {
+		x = draw_param(info->CHANNEL_BANDWIDTH == BANDWIDTH_WIDE ? "W" : "N",
+		               x, param_y, true);
+	}
+	x = draw_param(power_letter(info->OUTPUT_POWER), x, param_y, true);
+	snprintf(String, sizeof(String), "%u", (unsigned)gEeprom.SQUELCH_LEVEL);
+	draw_param(String, x, param_y, true);
 
+	/* row 3: DTMF (keypad input on the TX row, or this channel's last
+	 * received decode) takes the subtone row; width bound unchanged */
+	if (gDTMF_InputMode && tx_vfo)
+		dtmf_digits = gDTMF_InputBox;
+	else if (gSetting_live_DTMF_decoder && gDTMF_RX_live[vfo][0] != 0)
+		dtmf_digits = gDTMF_RX_live[vfo];
+
+	if (dtmf_digits != NULL) {
+		draw_dtmf_live(tone_y,
+		               (uint8_t)(LCD_WIDTH - SH_RIGHT_X_INSET - small_text_width(freq_str)),
+		               dtmf_digits);
+	} else {
 		/* row 3: RX + TX subtones (omit when OFF) */
 		format_tone(rx_tone, sizeof(rx_tone), info->pRX);
 		format_tone(tx_tone, sizeof(tx_tone), info->pTX);
@@ -578,6 +660,7 @@ static void draw_channel_row(uint8_t vfo)
 		const bool rx_live =
 			!show_yan && s_spk_vfo == vfo;
 		uint8_t name_left;
+		bool is_name = false;
 
 		if (VfoState[vfo] != VFO_STATE_NORMAL &&
 		    VfoState[vfo] < _VFO_STATE_LAST_ELEMENT &&
@@ -588,6 +671,7 @@ static void draw_channel_row(uint8_t vfo)
 			strncpy(String, gYanId_RX, sizeof(String) - 1u);
 			String[sizeof(String) - 1u] = 0;
 		} else {
+			is_name = true;
 			SETTINGS_FetchChannelName(String, gEeprom.ScreenChannel[vfo]);
 			if (String[0] == 0) {
 				if (IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo]))
@@ -602,8 +686,31 @@ static void draw_channel_row(uint8_t vfo)
 #else
 		String[10] = 0;
 #endif
-		name_left = draw_right_small(String,
-			(uint8_t)(name_y + (show_yan ? SH_PHONE_ANT_H : 0u)));
+		{
+			const uint8_t slot    = (vfo < 3u) ? vfo : 2u;
+			const uint8_t name_dy = (uint8_t)(name_y + (show_yan ? SH_PHONE_ANT_H : 0u));
+			const uint8_t name_w  = small_text_width(String);
+
+			s_name_over[slot] = false;
+			if (is_name && name_w > SH_NAME_FIELD_W) {
+				/* name wider than the 5-hanzi field: scroll inside it */
+				const uint8_t max_off = (uint8_t)(name_w - SH_NAME_FIELD_W);
+				uint8_t off;
+
+				name_scroll_seed(slot, String);
+				s_name_max_off[slot] = max_off;
+				off = name_scroll_offset(slot);
+				s_name_over[slot]      = true;
+				s_name_drawn_off[slot] = off;
+				draw_small_text_ex(String,
+				                   (int16_t)((int16_t)SH_NAME_FIELD_L - (int16_t)off),
+				                   name_dy, true,
+				                   (uint8_t)SH_NAME_FIELD_L, (uint8_t)SH_NAME_FIELD_R);
+				name_left = (uint8_t)SH_NAME_FIELD_L;
+			} else {
+				name_left = draw_right_small(String, name_dy);
+			}
+		}
 		if (show_yan) {
 			const uint8_t ix = (uint8_t)(name_left - SH_PHONE_W - SH_PHONE_GAP);
 			const uint8_t ax = (uint8_t)(ix + SH_PHONE_W - SH_PHONE_ANT_W);
@@ -692,7 +799,8 @@ static uint16_t tx_wave_rand_u16(void)
 static void clear_wave_area(void)
 {
 	const uint8_t y1 = (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u);
-	fill_rect(0, SH_WAVE_Y, LCD_WIDTH - 1u, y1, false);
+	/* start one row above the band: also wipes the line over the 2/4/6 marks */
+	fill_rect(0, (uint8_t)(SH_WAVE_Y - 1u), LCD_WIDTH - 1u, y1, false);
 }
 
 static bool wave_overlay_active(void)
@@ -755,14 +863,14 @@ static void draw_scale_digit(char ch, uint8_t cx, uint8_t y, bool invert)
 {
 	char buf[2];
 	const uint8_t gw = 3u;
-	const uint8_t x = (cx >= (gw / 2u)) ? (uint8_t)(cx - gw / 2u) : 0u;
+	const uint8_t x = (uint8_t)(cx - gw / 2u); /* tick x ≥ 21 always */
 
 	buf[0] = ch;
 	buf[1] = '\0';
 	if (invert) {
-		const uint8_t bx0 = (x > 0u) ? (uint8_t)(x - 1u) : 0u;
+		const uint8_t bx0 = (uint8_t)(x - 1u);
 		const uint8_t bx1 = (uint8_t)(x + gw);
-		const uint8_t by0 = (y > SH_WAVE_Y) ? (uint8_t)(y - 1u) : y;
+		const uint8_t by0 = (uint8_t)(y - 1u); /* inverted blocks 1px taller */
 		const uint8_t by1 = (uint8_t)(y + SH_METER_TEXT_H - 1u);
 		fill_rect(bx0, by0, bx1, by1, true);
 		draw_smallest_abs(buf, x, y, false);
@@ -1041,10 +1149,30 @@ static void blit_wave_lines(void)
 	}
 }
 
+/* Scroll driver: request a full redraw whenever a scrolling name's offset
+ * changed (the draw stores the offset it painted). CH3's row is skipped while
+ * the prompt overlay covers it. */
+static void name_scroll_tick(void)
+{
+	uint8_t rows = gEeprom.TRIPLE_WATCH ? 3u : 2u;
+
+	if (rows > 2u && wave_overlay_active())
+		rows = 2u;
+
+	for (uint8_t s = 0u; s < rows; s++) {
+		if (s_name_over[s] && name_scroll_offset(s) != s_name_drawn_off[s]) {
+			gUpdateDisplay = true;
+			return;
+		}
+	}
+}
+
 void UI_SyrupHome_Tick10ms(void)
 {
 	if (gScreenToDisplay != DISPLAY_MAIN)
 		return;
+
+	name_scroll_tick();
 
 	if (++s_tick_div < SH_TICK_PERIOD_10MS)
 		return;
