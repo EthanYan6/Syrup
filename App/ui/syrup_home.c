@@ -25,7 +25,7 @@
 #include "ui/ui.h"
 #include "app/yan_id_rf.h"
 
-/* Layout: two channel rows on top; wave / last-RX / battery at bottom */
+/* Layout: two channel rows on top; S-meter band at bottom */
 #define SH_STATUS_H        8u
 #define SH_SCREEN_H        64u
 #define SH_WAVE_H          20u
@@ -42,50 +42,37 @@
 #define SH_RIGHT_X_INSET   2u  /* right column shifted left */
 #define SH_GAP_PX          2u
 
-/* RX: stacked blocks — longer (wider) bricks; vertical pack fills SH_WAVE_H */
-#define SH_RX_BLOCK_W      5u   /* longer horizontally */
-#define SH_RX_BLOCK_H      3u   /* nominal brick height (actual slots pack to fill row) */
-#define SH_RX_TIP_H        (SH_RX_BLOCK_H / 3u) /* thin peak cap (1px when H=3) */
-#define SH_RX_PITCH_X      6u   /* 5px block + 1px column gap */
-#define SH_RX_PITCH_Y      3u   /* nominal; draw uses even pack into SH_WAVE_H */
-#define SH_RX_MAX_BLOCKS   ((SH_WAVE_H) / SH_RX_PITCH_Y)
-#define SH_RX_COLS         (LCD_WIDTH / SH_RX_PITCH_X)
-#define SH_RX_PAUSE_GATE   12u  /* below this dynamics → silence / peak-fall */
-
-#define SH_TICK_PERIOD_10MS  5u   /* ~50ms — slower overall */
-#define SH_RX_TIP_FALL       5u   /* tip brick ~250ms per step */
-#define SH_METER_PAD_X       1u
-#define SH_METER_PAD_Y       1u
+/* S-meter band: left status column (lock/battery/text) + scale/line/needle */
+#define SH_TICK_PERIOD_10MS  5u   /* ~50ms */
 #define SH_METER_TEXT_H      6u   /* gFont3x5 glyph height */
+#define SH_NEEDLE_MAX        128u /* 8 segments × 16 */
+#define SH_NEEDLE_FALL       3u   /* steps toward 0 per tick when idle */
+#define SH_METER_MARKS       9u
+#define SH_SIDE_L_W          18u  /* left status column (battery icon is 17px) */
+#define SH_METER_X0          (SH_SIDE_L_W + 3u)  /* 3px clear of the battery column */
+#define SH_METER_X1          (LCD_WIDTH - 3u)
+#define SH_NEEDLE_W          3u   /* slim vertical needle crossing the scale line */
+#define SH_NEEDLE_UP         2u   /* needle rows above the scale line */
+#define SH_NEEDLE_DN         3u   /* needle rows below the scale line */
+#define SH_METER_LINE_Y      (SH_WAVE_Y + 8u)
+#define SH_COL_LOCK_H        7u   /* gFontKeyLock visual height */
+#define SH_COL_BAT_H         7u   /* battery icon visual height */
+#define SH_COL_TEXT_H        6u   /* gFont3x5 text height */
 
-/* Last-RX placeholder: speaker + name (top); battery / lock (bottom) */
-#define SH_SPK_W             12u
-#define SH_SPK_H             8u
-#define SH_SPK_GAP           3u
-#define SH_SPK_Y_OFF         2u  /* speaker icon dropped vs name row */
-#define SH_NAME_MAX          10u
-#define SH_PH_BAT_H          8u   /* battery / lock / small-font text height */
-#define SH_PH_LINE_GAP       2u   /* gap between name row and battery row */
-#define SH_PH_ROW_GAP        2u   /* gap between lock, bat, text */
+/* Walkie: 7×7 body, 2×3 antenna on top-right (right edges aligned). */
+#define SH_PHONE_W      7u
+#define SH_PHONE_GAP    2u
+#define SH_PHONE_ANT_W 2u
+#define SH_PHONE_ANT_H 3u
+#define SH_PHONE_BODY_H 7u
 
-static uint8_t  s_rx_band[SH_RX_COLS]; /* current EQ body height */
-static uint8_t  s_rx_tip[SH_RX_COLS];  /* falling peak brick */
-static uint8_t  s_rx_phase;
-static uint8_t  s_rx_tip_div;
-static uint32_t s_tx_wave_prng;
-static bool     s_was_tx;
-static bool     s_was_rx;
-static bool     s_last_rx_valid;
-static uint8_t  s_last_rx_vfo;
-static uint16_t s_last_rx_channel;
-static uint8_t  s_triple_rx_vfo = 0xFF; /* sticky RX row in triple watch */
-static uint16_t s_triple_rx_ch;
-static uint32_t s_triple_rx_freq;
-static uint8_t  s_triple_blink;
-static bool     s_placeholder_blit_done;
-static uint8_t  s_tick_div;
+/* Speaking channel: speaker icon before the channel name */
+#define SH_SPK_W        12u
+#define SH_SPK_H        8u
+#define SH_SPK_GAP      4u   /* gap between the icon and the name */
+#define SH_SPK_Y_OFF    2u   /* icon drop vs the name row */
 
-/* Megaphone + sound waves (column-major, bit0 = top), from UI speaker asset */
+/* Megaphone + sound waves (column-major, bit0 = top) */
 static const uint8_t s_spk_bitmap[SH_SPK_W] = {
 	0b00111100,
 	0b00111100,
@@ -101,12 +88,17 @@ static const uint8_t s_spk_bitmap[SH_SPK_W] = {
 	0b10011001,
 };
 
-/* Walkie: 7×7 body, 2×3 antenna on top-right (right edges aligned). */
-#define SH_PHONE_W      7u
-#define SH_PHONE_GAP    2u
-#define SH_PHONE_ANT_W  2u
-#define SH_PHONE_ANT_H  3u
-#define SH_PHONE_BODY_H 7u
+static uint8_t  s_needle; /* 0 = S0 … SH_NEEDLE_MAX = +60 */
+static int16_t  s_rx_dbm;
+static uint32_t s_tx_wave_prng;
+static bool     s_was_tx;
+static bool     s_was_rx;
+static uint8_t  s_triple_rx_vfo = 0xFF; /* sticky RX row in triple watch */
+static uint16_t s_triple_rx_ch;
+static uint32_t s_triple_rx_freq;
+static uint8_t  s_triple_blink;
+static uint8_t  s_tick_div;
+static uint8_t  s_spk_vfo = 0xFF; /* last channel that received — sticky speaker */
 
 static void draw_col_bitmap(uint8_t x, uint8_t y_top, const uint8_t *cols, uint8_t w);
 
@@ -362,10 +354,9 @@ static void draw_dtmf_live(uint8_t y, uint8_t x_right, const char *digits)
 	draw_smallest_abs(buf, x_left, y, true);
 }
 
-static uint8_t current_s_level(void)
+static int16_t current_rssi_dbm(void)
 {
 	int16_t rssi_dBm = BK4819_GetRSSI_dBm();
-	uint8_t s_level;
 
 #ifdef ENABLE_AM_FIX
 	if (gSetting_AM_fix && gRxVfo->Modulation == MODULATION_AM)
@@ -376,6 +367,13 @@ static uint8_t current_s_level(void)
 		if (b < 7u)
 			rssi_dBm = (int16_t)(rssi_dBm + dBmCorrTable[b]);
 	}
+	return rssi_dBm;
+}
+
+static uint8_t current_s_level(void)
+{
+	const int16_t rssi_dBm = current_rssi_dbm();
+	uint8_t s_level;
 
 	/* IARU VHF/UHF: S9 = -93 dBm, 6 dB per S-unit */
 	if (rssi_dBm >= -93)
@@ -388,12 +386,47 @@ static uint8_t current_s_level(void)
 	return s_level;
 }
 
+/* S0, S1, S3, S5, S7, S9, +20, +40, +60 (marks 2/4/6) */
+static const int16_t s_meter_dbm[SH_METER_MARKS] = {
+	-147, -141, -129, -117, -105, -93, -73, -53, -33
+};
+
+static uint8_t dbm_to_needle(int16_t dbm)
+{
+	uint8_t i;
+
+	if (dbm <= s_meter_dbm[0])
+		return 0u;
+	if (dbm >= s_meter_dbm[SH_METER_MARKS - 1u])
+		return SH_NEEDLE_MAX;
+
+	for (i = 0u; i < (SH_METER_MARKS - 1u); i++) {
+		const int16_t lo = s_meter_dbm[i];
+		const int16_t hi = s_meter_dbm[i + 1u];
+		if (dbm <= hi) {
+			const int16_t span = (int16_t)(hi - lo);
+			const int16_t frac = (int16_t)(dbm - lo);
+			return (uint8_t)((uint16_t)i * 16u +
+			                 (uint16_t)(frac * 16) / (uint16_t)span);
+		}
+	}
+	return SH_NEEDLE_MAX;
+}
+
 static void remember_triple_rx_tune(void)
 {
 	if (s_triple_rx_vfo >= 3u)
 		return;
 	s_triple_rx_ch   = gEeprom.ScreenChannel[s_triple_rx_vfo];
 	s_triple_rx_freq = gEeprom.VfoInfo[s_triple_rx_vfo].freq_config_RX.Frequency;
+}
+
+/* Speaker icon is sticky: latched on RX, stays on that channel row until
+ * some other channel receives. */
+static void latch_spk_vfo(void)
+{
+	if (FUNCTION_IsRx() && gEeprom.RX_VFO < 3u)
+		s_spk_vfo = gEeprom.RX_VFO;
 }
 
 static void latch_triple_rx(void)
@@ -542,6 +575,8 @@ static void draw_channel_row(uint8_t vfo)
 			VfoState[vfo] == VFO_STATE_NORMAL &&
 			gYanId_RX_timeout != 0 &&
 			vfo == gYanId_RX_vfo;
+		const bool rx_live =
+			!show_yan && s_spk_vfo == vfo;
 		uint8_t name_left;
 
 		if (VfoState[vfo] != VFO_STATE_NORMAL &&
@@ -580,8 +615,31 @@ static void draw_channel_row(uint8_t vfo)
 			          (uint8_t)(ix + SH_PHONE_W - 1u),
 			          (uint8_t)(name_y + SH_PHONE_ANT_H + SH_PHONE_BODY_H - 1u),
 			          true);
-		}
-		if (!show_yan && IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo])) {
+		} else if (rx_live) {
+			/* speaking on this channel: speaker icon sits left of the
+			 * channel number, which keeps its usual spot by the name */
+			uint8_t left_of_name = 0u; /* channel number + its gap */
+
+			if (IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo])) {
+				char num[6];
+				snprintf(num, sizeof(num), "%u",
+				         (unsigned)(gEeprom.ScreenChannel[vfo] + 1u));
+				const uint8_t num_w = smallest_width(num);
+				if (num_w + 2u < name_left) {
+					draw_smallest_abs(num,
+						(uint8_t)(name_left - 2u - num_w), name_y, true);
+					left_of_name = (uint8_t)(num_w + 2u);
+				}
+			}
+			{
+				const uint8_t gap = left_of_name ? 2u : SH_SPK_GAP;
+				const uint8_t off = (uint8_t)(left_of_name + gap);
+				if (name_left > off + SH_SPK_W)
+					draw_col_bitmap((uint8_t)(name_left - off - SH_SPK_W),
+					                (uint8_t)(name_y + SH_SPK_Y_OFF),
+					                s_spk_bitmap, SH_SPK_W);
+			}
+		} else if (!show_yan && IS_MR_CHANNEL(gEeprom.ScreenChannel[vfo])) {
 			char num[6];
 			snprintf(num, sizeof(num), "%u",
 			         (unsigned)(gEeprom.ScreenChannel[vfo] + 1u));
@@ -594,129 +652,29 @@ static void draw_channel_row(uint8_t vfo)
 	draw_right_small(freq_str, freq_y);
 }
 
-static uint8_t energy_to_blocks(uint16_t energy)
-{
-	/* energy is roughly 0..400 → 0..SH_RX_MAX_BLOCKS */
-	static const uint16_t thresholds[] = {
-		20, 40, 70, 110, 160, 220, 290, 370
-	};
-	uint8_t level = 0;
-	for (uint8_t i = 0; i < ARRAY_SIZE(thresholds) && i < SH_RX_MAX_BLOCKS; i++) {
-		if (energy >= thresholds[i])
-			level = (uint8_t)(i + 1u);
-	}
-	if (level > SH_RX_MAX_BLOCKS)
-		level = SH_RX_MAX_BLOCKS;
-	return level;
-}
-
 static void reset_wave_state(void)
 {
-	memset(s_rx_band, 0, sizeof(s_rx_band));
-	memset(s_rx_tip, 0, sizeof(s_rx_tip));
-	s_rx_phase = 0;
-	s_rx_tip_div = 0;
+	s_needle = 0u;
 }
 
-static bool rx_pillars_alive(void)
+static bool needle_alive(void)
 {
-	for (uint8_t i = 0; i < SH_RX_COLS; i++) {
-		if (s_rx_band[i] > 0u || s_rx_tip[i] > 0u)
-			return true;
-	}
-	return false;
+	return s_needle > 0u;
 }
 
-/* Sound stopped: body vanishes at once; only the top brick falls slowly */
-static void sample_rx_decay(void)
+static void sample_needle(bool rx)
 {
-	for (uint8_t i = 0; i < SH_RX_COLS; i++) {
-		if (s_rx_band[i] > s_rx_tip[i])
-			s_rx_tip[i] = s_rx_band[i];
-		s_rx_band[i] = 0u; /* lower blocks disappear immediately */
-	}
-
-	if (++s_rx_tip_div >= SH_RX_TIP_FALL) {
-		s_rx_tip_div = 0;
-		for (uint8_t i = 0; i < SH_RX_COLS; i++) {
-			if (s_rx_tip[i] > 0u)
-				s_rx_tip[i]--;
-		}
-	}
-}
-
-static void sample_rx_wave(void)
-{
-	/*
-	 * Chaotic EQ pillars while audio is present; on silence freeze body
-	 * and let the top brick fall slowly (peak-hold decay).
-	 */
-	const uint8_t  noise  = BK4819_GetExNoiceIndicator();
-	const uint8_t  glitch = BK4819_GetGlitchIndicator();
-	const uint8_t  af     = BK4819_GetAfTxRx();
-
-	uint16_t dynamics = (uint16_t)af + (uint16_t)glitch;
-	if (noise < 90u)
-		dynamics = (uint16_t)(dynamics + ((90u - noise) >> 1));
-
-	uint16_t activity = dynamics;
-	if (activity > 255u)
-		activity = 255u;
-
-	const bool paused = (dynamics < SH_RX_PAUSE_GATE);
-	if (paused) {
-		sample_rx_decay();
+	if (rx) {
+		s_rx_dbm = current_rssi_dbm();
+		s_needle = dbm_to_needle(s_rx_dbm);
 		return;
 	}
 
-	s_rx_phase++;
-
-	for (uint8_t col = 0; col < SH_RX_COLS; col++) {
-		const uint16_t h = (uint16_t)(
-			((uint16_t)s_rx_phase * 37u) ^
-			((uint16_t)col * 157u) ^
-			((uint16_t)(s_rx_phase + col) * 13u));
-		const uint8_t mix = (uint8_t)(h ^ (h >> 8));
-
-		uint16_t target = (uint16_t)(((uint32_t)activity * (40u + (mix % 216u))) / 255u);
-
-		if ((mix & 0x07u) == 0u)
-			target = (uint16_t)(target + (activity >> 1));
-		else if ((mix & 0x07u) == 1u)
-			target >>= 2;
-		else if ((mix & 0x0Fu) == 2u)
-			target >>= 1;
-
-		{
-			const int8_t wobble = (int8_t)(((mix >> 3) & 7u) - 3);
-			int16_t t = (int16_t)target + (int16_t)wobble * (int16_t)(activity >> 6);
-			if (t < 0)
-				t = 0;
-			if (t > 400)
-				t = 400;
-			target = (uint16_t)t;
-		}
-
-		const uint8_t want = energy_to_blocks(target);
-
-		/* slow attack / release — one step per tick max */
-		if (want > s_rx_band[col])
-			s_rx_band[col]++;
-		else if (want < s_rx_band[col] && s_rx_band[col] > 0u)
-			s_rx_band[col]--;
-
-		if (s_rx_band[col] > s_rx_tip[col])
-			s_rx_tip[col] = s_rx_band[col];
-	}
-
-	/* while loud, tip still slowly settles toward body if it overshot */
-	if (++s_rx_tip_div >= SH_RX_TIP_FALL) {
-		s_rx_tip_div = 0;
-		for (uint8_t i = 0; i < SH_RX_COLS; i++) {
-			if (s_rx_tip[i] > s_rx_band[i])
-				s_rx_tip[i]--;
-		}
-	}
+	/* no signal: needle slowly walks back to 0 */
+	if (s_needle > SH_NEEDLE_FALL)
+		s_needle = (uint8_t)(s_needle - SH_NEEDLE_FALL);
+	else
+		s_needle = 0u;
 }
 
 static uint16_t tx_wave_rand_u16(void)
@@ -737,31 +695,6 @@ static void clear_wave_area(void)
 	fill_rect(0, SH_WAVE_Y, LCD_WIDTH - 1u, y1, false);
 }
 
-/* Center a short hint in the bar/wave row (low battery / keypad unlock) */
-static void draw_wave_centered_message(const char *text, bool key_lock_hint)
-{
-	uint8_t name_w;
-	uint8_t text_h;
-	uint8_t x;
-	uint8_t y;
-
-	(void)key_lock_hint;
-	clear_wave_area();
-
-#ifdef ENABLE_CHINESE
-	text_h = UI_SmallLinePixelHeight(text);
-#else
-	text_h = 8u;
-#endif
-	name_w = small_text_width(text);
-	if (name_w >= LCD_WIDTH)
-		x = 0u;
-	else
-		x = (uint8_t)((LCD_WIDTH - name_w) / 2u);
-	y = (uint8_t)(SH_WAVE_Y + (SH_WAVE_H - text_h) / 2u);
-	draw_small_text(text, x, y, true);
-}
-
 static bool wave_overlay_active(void)
 {
 	if (gLowBattery && !gLowBatteryConfirmed)
@@ -771,140 +704,122 @@ static bool wave_overlay_active(void)
 	return false;
 }
 
-static void draw_wave_overlay(void)
+static const char *wave_prompt_text(void)
 {
 	if (gLowBattery && !gLowBatteryConfirmed) {
-		const char *msg = "LOW BATTERY";
 #ifdef ENABLE_CHINESE
 		if (gUiLanguage == UI_LANGUAGE_CN)
-			msg = "\xe4\xbd\x8e\xe7\x94\xb5\xe9\x87\x8f"; /* 低电量 */
+			return "\xe4\xbd\x8e\xe7\x94\xb5\xe9\x87\x8f"; /* 低电量 */
 #endif
-		draw_wave_centered_message(msg, false);
-		return;
+		return "LOW BATTERY";
 	}
 
 	if (gEeprom.KEY_LOCK && gKeypadLocked > 0) {
-		const char *msg = "UNLOCK KEYBOARD";
 #ifdef ENABLE_CHINESE
 		if (gUiLanguage == UI_LANGUAGE_CN)
-			msg = "\xe9\x95\xbf\xe6\x8c\x89#\xe8\xa7\xa3\xe9\x94\x81"; /* 长按#解锁 */
+			return "\xe9\x95\xbf\xe6\x8c\x89#\xe8\xa7\xa3\xe9\x94\x81"; /* 长按#解锁 */
 #endif
-		draw_wave_centered_message(msg, true);
+		return "UNLOCK KEYBOARD";
 	}
+	return NULL;
 }
 
-/* Pack block b (0=bottom) into the full wave row so max height reaches SH_WAVE_Y */
-static void rx_block_ys(uint8_t b_from_bottom, uint8_t *y0, uint8_t *y1)
+/* Non-uniform scale: marks 1..8 are evenly spaced and +60 lands on the right
+ * edge; the 0→1 gap is exactly half of that spacing (S0..S1 spans only 6 dB).
+ * The needle interpolates per segment, so it follows automatically. */
+static uint8_t meter_tick_x(uint8_t i)
 {
-	const uint8_t bot = (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u);
-	const uint16_t lo = ((uint16_t)b_from_bottom * SH_WAVE_H) / SH_RX_MAX_BLOCKS;
-	const uint16_t hi = ((uint16_t)(b_from_bottom + 1u) * SH_WAVE_H) / SH_RX_MAX_BLOCKS;
+	const uint16_t span = (uint16_t)(SH_METER_X1 - SH_METER_X0);
 
-	*y1 = (uint8_t)(bot - lo);
-	*y0 = (uint8_t)(bot - (hi - 1u));
+	if (i == 0u)
+		return SH_METER_X0;
+	return (uint8_t)(SH_METER_X0 +
+	                 (uint16_t)(((uint16_t)(2u * i - 1u) * span + 7u) / 15u));
 }
 
-/* Wave-row center S / dBm — tight plate only */
-static void draw_s_meter_label(void)
+static uint8_t needle_pixel_x(void)
 {
-	char buf[20];
-	int16_t rssi_dBm;
-	uint8_t s_level;
-	uint8_t text_w;
-	uint8_t text_x;
-	uint8_t text_y;
-	uint8_t box_x0;
-	uint8_t box_x1;
-	uint8_t box_y0;
-	uint8_t box_y1;
+	const uint8_t seg = (uint8_t)(s_needle / 16u);
+	const uint8_t frac = (uint8_t)(s_needle % 16u);
+	const uint8_t x0 = meter_tick_x(seg);
 
-	if (!FUNCTION_IsRx())
-		return;
-
-	rssi_dBm = BK4819_GetRSSI_dBm();
-#ifdef ENABLE_AM_FIX
-	if (gSetting_AM_fix && gRxVfo->Modulation == MODULATION_AM)
-		rssi_dBm = (int16_t)(rssi_dBm + AM_fix_get_gain_diff());
-#endif
+	if (seg >= (SH_METER_MARKS - 1u))
+		return meter_tick_x(SH_METER_MARKS - 1u);
 	{
-		const unsigned int b = gEeprom.VfoInfo[gEeprom.RX_VFO].Band;
-		if (b < 7u)
-			rssi_dBm = (int16_t)(rssi_dBm + dBmCorrTable[b]);
+		const uint8_t x1 = meter_tick_x((uint8_t)(seg + 1u));
+		return (uint8_t)(x0 + ((uint16_t)(x1 - x0) * frac) / 16u);
+	}
+}
+
+static void draw_scale_digit(char ch, uint8_t cx, uint8_t y, bool invert)
+{
+	char buf[2];
+	const uint8_t gw = 3u;
+	const uint8_t x = (cx >= (gw / 2u)) ? (uint8_t)(cx - gw / 2u) : 0u;
+
+	buf[0] = ch;
+	buf[1] = '\0';
+	if (invert) {
+		const uint8_t bx0 = (x > 0u) ? (uint8_t)(x - 1u) : 0u;
+		const uint8_t bx1 = (uint8_t)(x + gw);
+		const uint8_t by0 = (y > SH_WAVE_Y) ? (uint8_t)(y - 1u) : y;
+		const uint8_t by1 = (uint8_t)(y + SH_METER_TEXT_H - 1u);
+		fill_rect(bx0, by0, bx1, by1, true);
+		draw_smallest_abs(buf, x, y, false);
+	} else {
+		draw_smallest_abs(buf, x, y, true);
+	}
+}
+
+/* Scale + line + needle (decaying to 0 when idle) + live dBm readout */
+static void draw_s_meter(bool rx)
+{
+	static const char marks[SH_METER_MARKS] = {
+		'0', '1', '3', '5', '7', '9', '2', '4', '6'
+	};
+	const uint8_t num_y = SH_WAVE_Y;
+	const uint8_t line_y = SH_METER_LINE_Y;
+	const uint8_t x0 = meter_tick_x(0u);
+	const uint8_t x1 = meter_tick_x(SH_METER_MARKS - 1u);
+	uint8_t i;
+
+	for (i = 0u; i < SH_METER_MARKS; i++) {
+		const uint8_t tx = meter_tick_x(i);
+		const bool inv = (i >= 6u); /* +20/+40/+60 marks inverted */
+		draw_scale_digit(marks[i], tx, num_y, inv);
+		draw_pixel(tx, (uint8_t)(line_y - 2u), true);
+		draw_pixel(tx, (uint8_t)(line_y - 1u), true);
 	}
 
-	s_level = current_s_level();
+	for (i = x0; i <= x1; i++)
+		draw_pixel(i, line_y, true);
 
-	snprintf(buf, sizeof(buf), "S%u %d dBm", (unsigned)s_level, (int)rssi_dBm);
+	/* slim vertical needle crossing the scale line at the signal position */
+	{
+		uint8_t nx = needle_pixel_x();
+		uint8_t nx0 = (nx >= (SH_NEEDLE_W / 2u)) ? (uint8_t)(nx - SH_NEEDLE_W / 2u) : nx;
+		uint8_t nx1;
+		if (nx0 < x0)
+			nx0 = x0;
+		nx1 = (uint8_t)(nx0 + SH_NEEDLE_W - 1u);
+		if (nx1 > x1)
+			nx1 = x1;
+		fill_rect(nx0, (uint8_t)(line_y - SH_NEEDLE_UP), nx1,
+		          (uint8_t)(line_y + SH_NEEDLE_DN), true);
+	}
 
-	text_w = smallest_width(buf);
-	if (text_w >= LCD_WIDTH)
-		text_x = 0u;
-	else
-		text_x = (uint8_t)((LCD_WIDTH - text_w) / 2u);
-
-	/* flush under the top of the wave row; only a small center strip */
-	text_y = (uint8_t)(SH_WAVE_Y + SH_METER_PAD_Y);
-
-	box_x0 = (text_x > SH_METER_PAD_X) ? (uint8_t)(text_x - SH_METER_PAD_X) : 0u;
-	box_x1 = (uint8_t)(text_x + text_w + SH_METER_PAD_X);
-	if (box_x1 >= LCD_WIDTH)
-		box_x1 = LCD_WIDTH - 1u;
-	box_y0 = SH_WAVE_Y;
-	box_y1 = (uint8_t)(text_y + SH_METER_TEXT_H - 1u);
-	if (box_y1 >= (uint8_t)(SH_WAVE_Y + SH_WAVE_H))
-		box_y1 = (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u);
-
-	/* tight blank plate only behind the digits — not a full-width row */
-	fill_rect(box_x0, box_y0, box_x1, box_y1, false);
-	draw_smallest_abs(buf, text_x, text_y, true);
-}
-
-static void draw_rx_tip_cap(uint8_t x0, uint8_t tip_level)
-{
-	uint8_t slot_y0;
-	uint8_t slot_y1;
-	uint8_t tip_y1;
-
-	if (tip_level == 0u || SH_RX_TIP_H == 0u)
-		return;
-
-	rx_block_ys((uint8_t)(tip_level - 1u), &slot_y0, &slot_y1);
-
-	/* thin tip flush with the top of this slot (stays inside the wave row) */
-	tip_y1 = (uint8_t)(slot_y0 + SH_RX_TIP_H - 1u);
-	if (tip_y1 > slot_y1)
-		tip_y1 = slot_y1;
-
-	fill_rect(x0, slot_y0, (uint8_t)(x0 + SH_RX_BLOCK_W - 1u), tip_y1, true);
-}
-
-static void draw_rx_wave(void)
-{
-	/* redraw frame (erase previous bricks); state is not wiped on silence */
-	clear_wave_area();
-
-	for (uint8_t col = 0; col < SH_RX_COLS; col++) {
-		const uint8_t x0   = (uint8_t)(col * SH_RX_PITCH_X);
-		const uint8_t body = s_rx_band[col];
-		const uint8_t tip  = s_rx_tip[col];
-
-		if (body > 0u) {
-			/* solid pillar while audio present — max body fills the whole row */
-			for (uint8_t b = 0; b < body; b++) {
-				uint8_t y0;
-				uint8_t y1;
-				rx_block_ys(b, &y0, &y1);
-				fill_rect(x0, y0, (uint8_t)(x0 + SH_RX_BLOCK_W - 1u), y1, true);
-			}
-			/* thin peak cap on the pillar */
-			if (tip > 0u)
-				draw_rx_tip_cap(x0, tip);
-			else
-				draw_rx_tip_cap(x0, body);
-		} else if (tip > 0u) {
-			/* silence: only the thin peak rectangle slowly descending */
-			draw_rx_tip_cap(x0, tip);
-		}
+	/* big dBm readout centered under the line while receiving */
+	if (rx) {
+		char buf[12];
+		uint8_t tw;
+		uint8_t tx;
+		snprintf(buf, sizeof(buf), "%d dBm", (int)s_rx_dbm);
+		tw = small_text_width(buf);
+		if (tw >= (uint8_t)(x1 - x0))
+			tx = x0;
+		else
+			tx = (uint8_t)(x0 + ((x1 - x0) - tw) / 2u);
+		draw_small_text(buf, tx, (uint8_t)(line_y + SH_NEEDLE_DN + 1u), true);
 	}
 }
 
@@ -917,11 +832,9 @@ static void draw_tx_wave(void)
 	const uint8_t center_y = (uint8_t)(((uint16_t)wave_top + (uint16_t)wave_bottom) / 2u);
 	const uint8_t max_up = (uint8_t)(center_y - wave_top);
 	const uint8_t max_dn = (uint8_t)(wave_bottom - center_y);
-	const uint8_t n_cols = LCD_WIDTH;
+	const uint8_t n_cols = (uint8_t)(inner_right - inner_left + 1u);
 	uint8_t peak = (uint8_t)((n_cols - 1u) / 2u);
 	uint8_t col_idx;
-
-	clear_wave_area();
 
 	/* center axis + dense 1px columns, diamond envelope (Dondji TX popup) */
 	for (uint8_t x = inner_left; x <= inner_right; x++)
@@ -965,37 +878,6 @@ static void draw_tx_wave(void)
 	}
 }
 
-static void capture_last_rx(void)
-{
-	s_last_rx_vfo = gEeprom.RX_VFO;
-	if (s_last_rx_vfo > 2u)
-		s_last_rx_vfo = 0u;
-	s_last_rx_channel = gEeprom.ScreenChannel[s_last_rx_vfo];
-	s_last_rx_valid = true;
-	s_placeholder_blit_done = false;
-}
-
-static void format_last_rx_name(char *out, size_t out_sz)
-{
-	SETTINGS_FetchChannelName(out, s_last_rx_channel);
-	if (out[0] == '\0') {
-		if (IS_MR_CHANNEL(s_last_rx_channel))
-			snprintf(out, out_sz, "CH-%04u",
-			         (unsigned)(s_last_rx_channel + 1u));
-		else
-			snprintf(out, out_sz, "VFO-%u",
-			         (unsigned)(s_last_rx_vfo + 1u));
-	}
-#ifdef ENABLE_CHINESE
-	if (out_sz > CHANNEL_NAME_MAX_BYTES)
-		out[CHANNEL_NAME_MAX_BYTES] = '\0';
-	else if (out_sz > 0)
-		out[out_sz - 1u] = '\0';
-#else
-	out[SH_NAME_MAX] = '\0';
-#endif
-}
-
 /* Column-major 8px-tall glyph/icon into screen pixels (status-style bitmaps) */
 static void draw_col_bitmap(uint8_t x, uint8_t y_top, const uint8_t *cols, uint8_t w)
 {
@@ -1008,159 +890,136 @@ static void draw_col_bitmap(uint8_t x, uint8_t y_top, const uint8_t *cols, uint8
 	}
 }
 
-/* Build lock + battery + BatTxt string; returns total width. bat_bmp must be sized. */
-static uint8_t prepare_battery_row(uint8_t *bat_bmp, char *bat_str, size_t bat_str_sz,
-                                   uint8_t *lock_w_out, uint8_t *bat_w_out, uint8_t *text_w_out)
+/* Left status column: lock icon (when locked) / battery icon /
+ * voltage-or-percent text (per gSetting_battery_text), stacked as rows. */
+static void draw_left_status_column(void)
 {
-	uint8_t lock_w;
-	uint8_t bat_w;
-	uint8_t text_w;
-	uint8_t total;
-
-	UI_DrawBattery(bat_bmp, gBatteryDisplayLevel, gLowBatteryBlink);
-	bat_w = (uint8_t)sizeof(BITMAP_BatteryLevel1);
-	lock_w = (gEeprom.KEY_LOCK != 0) ? (uint8_t)sizeof(gFontKeyLock) : 0u;
+	char bat_str[8];
+	uint8_t bat_bmp[sizeof(BITMAP_BatteryLevel1)];
+	bool has_lock;
+	bool has_text;
+	bool spread;
+	uint8_t row_h[3];
+	uint8_t row_cnt = 0u;
+	uint8_t total_h;
+	uint8_t gap;
+	uint8_t y;
+	uint8_t i;
+	uint8_t row = 0u;
 
 	bat_str[0] = '\0';
-	text_w = 0u;
 	switch (gSetting_battery_text) {
 	case 1: {
 		const uint16_t voltage = MIN(gBatteryVoltageAverage, 999);
-		snprintf(bat_str, bat_str_sz, "%u.%02u",
+		snprintf(bat_str, sizeof(bat_str), "%u.%02u",
 		         voltage / 100u, voltage % 100u);
-		text_w = small_text_width(bat_str);
 		break;
 	}
 	case 2:
-		snprintf(bat_str, bat_str_sz, "%02u%%",
+		snprintf(bat_str, sizeof(bat_str), "%02u%%",
 		         BATTERY_VoltsToPercent(gBatteryVoltageAverage));
-		text_w = small_text_width(bat_str);
 		break;
 	default:
 		break;
 	}
 
-	total = bat_w;
-	if (lock_w > 0u)
-		total = (uint8_t)(total + lock_w + SH_PH_ROW_GAP);
-	if (text_w > 0u)
-		total = (uint8_t)(total + SH_PH_ROW_GAP + text_w);
+	has_lock = (gEeprom.KEY_LOCK != 0);
+	has_text = (bat_str[0] != '\0');
 
-	*lock_w_out = lock_w;
-	*bat_w_out = bat_w;
-	*text_w_out = text_w;
-	return total;
+	if (has_lock)
+		row_h[row_cnt++] = SH_COL_LOCK_H;
+	row_h[row_cnt++] = SH_COL_BAT_H;
+	if (has_text)
+		row_h[row_cnt++] = SH_COL_TEXT_H;
+
+	total_h = 0u;
+	for (i = 0u; i < row_cnt; i++)
+		total_h = (uint8_t)(total_h + row_h[i]);
+	gap = (row_cnt > 1u) ? 1u : 0u;
+	while ((uint16_t)total_h + (uint16_t)gap * (uint16_t)(row_cnt - 1u) > SH_WAVE_H && gap > 0u)
+		gap--;
+	total_h = (uint8_t)((uint16_t)total_h + (uint16_t)gap * (uint16_t)(row_cnt - 1u));
+
+	y = (uint8_t)(SH_WAVE_Y + (SH_WAVE_H - total_h) / 2u);
+
+	/* all three rows fill the band edge-to-edge: spread lock and text one
+	 * extra pixel apart (gFont3x5 glyphs are 5px tall, so the text's empty
+	 * 6th row clips harmlessly at the screen bottom) */
+	spread = has_lock && has_text;
+
+	if (has_lock) {
+		const uint8_t x = (uint8_t)((SH_SIDE_L_W - sizeof(gFontKeyLock)) / 2u);
+		const uint8_t ly = (spread && y > 0u) ? (uint8_t)(y - 1u) : y;
+		draw_col_bitmap(x, ly, gFontKeyLock, (uint8_t)sizeof(gFontKeyLock));
+		y = (uint8_t)(y + row_h[row] + gap);
+		row++;
+	}
+
+	UI_DrawBattery(bat_bmp, gBatteryDisplayLevel, gLowBatteryBlink);
+	draw_col_bitmap(0u, y, bat_bmp, (uint8_t)sizeof(BITMAP_BatteryLevel1));
+	y = (uint8_t)(y + row_h[row] + gap);
+	row++;
+
+	if (has_text) {
+		const uint8_t w = smallest_width(bat_str);
+		const uint8_t x = (SH_SIDE_L_W > w) ? (uint8_t)((SH_SIDE_L_W - w) / 2u) : 0u;
+		draw_smallest_abs(bat_str, x, (uint8_t)(y + (spread ? 1u : 0u)), true);
+	}
+	(void)row;
 }
 
-/* One centered line: [lock?] battery [voltage|percent] */
-static void draw_battery_status_row(uint8_t y_top)
+/* Prompt takes over the whole band (both watch modes): clear + centered text.
+ * It disappears on its own timeout (keypad-lock counter / battery confirm),
+ * then the normal band content is drawn again. */
+static void draw_wave_overlay(void)
 {
-	char bat_str[8];
-	uint8_t bat_bmp[sizeof(BITMAP_BatteryLevel1)];
-	uint8_t lock_w;
-	uint8_t bat_w;
+	const char *msg = wave_prompt_text();
+	uint8_t text_h;
 	uint8_t text_w;
-	uint8_t total_w;
-	uint8_t bx;
+	uint8_t x;
+	uint8_t y;
 
-	total_w = prepare_battery_row(bat_bmp, bat_str, sizeof(bat_str),
-	                              &lock_w, &bat_w, &text_w);
+	if (msg == NULL)
+		return;
 
-	if (total_w >= LCD_WIDTH)
-		bx = 0u;
+	clear_wave_area();
+
+#ifdef ENABLE_CHINESE
+	text_h = UI_SmallLinePixelHeight(msg);
+#else
+	text_h = 8u;
+#endif
+	if (text_h > SH_WAVE_H)
+		text_h = SH_WAVE_H;
+
+	text_w = small_text_width(msg);
+	if (text_w >= LCD_WIDTH)
+		x = 0u;
 	else
-		bx = (uint8_t)((LCD_WIDTH - total_w) / 2u);
-
-	if (lock_w > 0u) {
-		draw_col_bitmap(bx, y_top, gFontKeyLock, lock_w);
-		bx = (uint8_t)(bx + lock_w + SH_PH_ROW_GAP);
-	}
-	draw_col_bitmap(bx, y_top, bat_bmp, bat_w);
-	bx = (uint8_t)(bx + bat_w);
-	if (text_w > 0u) {
-		bx = (uint8_t)(bx + SH_PH_ROW_GAP);
-		/* Same gFontSmall as status-bar BatTxt — matches battery icon height */
-		draw_small_text(bat_str, bx, y_top, true);
-	}
+		x = (uint8_t)((LCD_WIDTH - text_w) / 2u);
+	y = (uint8_t)(SH_WAVE_Y + (SH_WAVE_H - text_h) / 2u);
+	draw_small_text(msg, x, y, true);
 }
 
-/* No last-RX yet (e.g. fresh boot): single centered battery / lock row */
-static void draw_idle_battery_placeholder(void)
+/* TX: full-width TX animation only (no status column, no scale).
+ * Prompt active: whole band cleared, centered text only, until it times out.
+ * Otherwise: left status column + always-on S-meter scale/line/needle. */
+static void draw_wave_row(void)
 {
 	clear_wave_area();
-	draw_battery_status_row((uint8_t)(SH_WAVE_Y + (SH_WAVE_H - SH_PH_BAT_H) / 2u));
-}
 
-/* Icon + channel name on top; battery (+ optional lock) centered below.
- * Both rows are vertically centered as one block inside the wave band. */
-static void draw_last_rx_placeholder(void)
-{
-	char name[22];
-	uint8_t name_w;
-	uint8_t total_w;
-	uint8_t x;
-	uint8_t name_y;
-	uint8_t bat_y;
-	uint8_t group_h;
-	uint8_t line_gap;
-	uint8_t block_h;
-
-	if (!s_last_rx_valid) {
-		draw_idle_battery_placeholder();
+	if (gCurrentFunction == FUNCTION_TRANSMIT) {
+		draw_tx_wave();
 		return;
 	}
 
-	format_last_rx_name(name, sizeof(name));
-#ifdef ENABLE_CHINESE
-	group_h = UI_SmallLinePixelHeight(name);
-	if (group_h <= 8u)
-		group_h = (SH_SPK_H > 8u) ? SH_SPK_H : 8u;
-#else
-	group_h = (SH_SPK_H > 8u) ? SH_SPK_H : 8u; /* gFontSmall is 8px */
-#endif
-	name_w = small_text_width(name);
-	total_w = (uint8_t)(SH_SPK_W + SH_SPK_GAP + name_w);
-
-	/* Vertical center of (name row + gap + battery row) inside SH_WAVE_H */
-	line_gap = SH_PH_LINE_GAP;
-	block_h = (uint8_t)(group_h + SH_PH_BAT_H);
-	if ((uint8_t)(block_h + line_gap) > SH_WAVE_H) {
-		line_gap = (block_h >= SH_WAVE_H) ? 0u : (uint8_t)(SH_WAVE_H - block_h);
-	}
-	block_h = (uint8_t)(group_h + line_gap + SH_PH_BAT_H);
-	name_y = (uint8_t)(SH_WAVE_Y + (SH_WAVE_H - block_h) / 2u);
-	bat_y = (uint8_t)(name_y + group_h + line_gap);
-
-	clear_wave_area();
-
-	if (total_w >= LCD_WIDTH)
-		x = 0u;
-	else
-		x = (uint8_t)((LCD_WIDTH - total_w) / 2u);
-	draw_col_bitmap(x, (uint8_t)(name_y + SH_SPK_Y_OFF), s_spk_bitmap, SH_SPK_W);
-	draw_small_text(name, (uint8_t)(x + SH_SPK_W + SH_SPK_GAP), name_y, true);
-
-	draw_battery_status_row(bat_y);
-}
-
-static void draw_wave_row(void)
-{
 	if (wave_overlay_active()) {
 		draw_wave_overlay();
 		return;
 	}
 
-	if (gCurrentFunction == FUNCTION_TRANSMIT) {
-		draw_tx_wave();
-	} else if (FUNCTION_IsRx() || rx_pillars_alive()) {
-		/* RX or tip-fall: pillars; S-meter only while actually receiving */
-		draw_rx_wave();
-		draw_s_meter_label();
-	} else if (s_last_rx_valid) {
-		draw_last_rx_placeholder();
-	} else {
-		draw_idle_battery_placeholder();
-	}
+	draw_left_status_column();
+	draw_s_meter(FUNCTION_IsRx());
 }
 
 static void blit_wave_lines(void)
@@ -1186,13 +1045,12 @@ void UI_SyrupHome_Tick10ms(void)
 {
 	if (gScreenToDisplay != DISPLAY_MAIN)
 		return;
-	/* Keep overlay text stable; do not animate bars underneath */
-	if (wave_overlay_active())
-		return;
 
 	if (++s_tick_div < SH_TICK_PERIOD_10MS)
 		return;
 	s_tick_div = 0;
+
+	latch_spk_vfo();
 
 	if (gEeprom.TRIPLE_WATCH) {
 		const bool rx = FUNCTION_IsRx();
@@ -1225,32 +1083,20 @@ void UI_SyrupHome_Tick10ms(void)
 		return;
 	}
 
-	/* only entering TX wipes RX pillar state */
-	if (tx && !s_was_tx) {
+	/* only entering TX wipes needle state */
+	if (tx && !s_was_tx)
 		reset_wave_state();
-		s_placeholder_blit_done = false;
-	}
 	s_was_tx = tx;
 
-	if (rx && !s_was_rx)
-		capture_last_rx();
-	s_was_rx = rx;
-
 	if (!tx && rx) {
-		sample_rx_wave();
-		s_placeholder_blit_done = false;
-	} else if (!tx && rx_pillars_alive()) {
-		/* no signal / left RX — keep falling tips, do not clear */
-		sample_rx_decay();
-		s_placeholder_blit_done = false;
+		sample_needle(true);
+	} else if (!tx && needle_alive()) {
+		/* signal gone: needle keeps drifting back toward 0 */
+		sample_needle(false);
 	}
-	/* idle: last-RX or boot battery row — keep redrawing so bat / lock stay live */
 
 	draw_wave_row();
 	blit_wave_lines();
-
-	if (!tx && !rx && !rx_pillars_alive())
-		s_placeholder_blit_done = true;
 }
 
 void UI_DisplaySyrupHome(void)
@@ -1258,12 +1104,11 @@ void UI_DisplaySyrupHome(void)
 	UI_StatusClear();
 	UI_DisplayClear();
 
-	/* full-screen clear is fine on page entry; do not zero pillar state unless TX */
+	latch_spk_vfo();
+
+	/* full-screen clear is fine on page entry; do not zero needle state unless TX */
 	if (gCurrentFunction == FUNCTION_TRANSMIT && !s_was_tx)
 		reset_wave_state();
-
-	/* page redraw always refreshes placeholder if shown */
-	s_placeholder_blit_done = false;
 
 	if (gEeprom.TRIPLE_WATCH) {
 		latch_triple_rx();
@@ -1284,9 +1129,4 @@ void UI_DisplaySyrupHome(void)
 	draw_channel_row(1);
 	if (gEeprom.TX_VFO < 2u)
 		invert_channel_row(gEeprom.TX_VFO);
-
-	if (gCurrentFunction != FUNCTION_TRANSMIT &&
-	    !FUNCTION_IsRx() &&
-	    !rx_pillars_alive())
-		s_placeholder_blit_done = true;
 }
