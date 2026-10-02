@@ -52,13 +52,6 @@
 #define SH_RX_COLS         (LCD_WIDTH / SH_RX_PITCH_X)
 #define SH_RX_PAUSE_GATE   12u  /* below this dynamics → silence / peak-fall */
 
-/* TX: hairline vertical bars, newest on the left, scroll right */
-#define SH_TX_BAR_W        1u
-#define SH_TX_GAP          1u
-#define SH_TX_PITCH        (SH_TX_BAR_W + SH_TX_GAP)
-#define SH_TX_BARS         (LCD_WIDTH / SH_TX_PITCH)
-#define SH_TX_MAX_HALF     ((SH_WAVE_H / 2u) - 1u)  /* reach top & bottom of row */
-
 #define SH_TICK_PERIOD_10MS  5u   /* ~50ms — slower overall */
 #define SH_RX_TIP_FALL       5u   /* tip brick ~250ms per step */
 #define SH_METER_PAD_X       1u
@@ -79,9 +72,7 @@ static uint8_t  s_rx_band[SH_RX_COLS]; /* current EQ body height */
 static uint8_t  s_rx_tip[SH_RX_COLS];  /* falling peak brick */
 static uint8_t  s_rx_phase;
 static uint8_t  s_rx_tip_div;
-static uint8_t  s_tx_bars[SH_TX_BARS];
-static uint8_t  s_tx_hold;             /* louder = hold scroll longer */
-static uint16_t s_tx_floor;            /* adaptive silence floor for big swing */
+static uint32_t s_tx_wave_prng;
 static bool     s_was_tx;
 static bool     s_was_rx;
 static bool     s_last_rx_valid;
@@ -603,36 +594,6 @@ static void draw_channel_row(uint8_t vfo)
 	draw_right_small(freq_str, freq_y);
 }
 
-/* TX: map mic amplitude onto full half-row height with large dynamic range */
-static uint8_t voice_to_tx_half(uint16_t amp)
-{
-	if (amp < 50u)
-		amp = 50u;
-
-	/* floor tracks quiet level: drops fast, rises slowly */
-	if (amp < s_tx_floor)
-		s_tx_floor = amp;
-	else if (s_tx_floor + 4u < amp)
-		s_tx_floor = (uint16_t)(s_tx_floor + 4u);
-	else if (s_tx_floor < amp)
-		s_tx_floor++;
-
-	uint16_t span = (amp > s_tx_floor) ? (uint16_t)(amp - s_tx_floor) : 0u;
-	if (span < 8u)
-		return 0u; /* near silence → baseline only */
-
-	/*
-	 * Aggressive curve into 1..SH_TX_MAX_HALF so speech swings hard
-	 * and peaks can fill the whole wave row (top + bottom).
-	 */
-	uint32_t h = ((uint32_t)(span - 8u) * SH_TX_MAX_HALF) / 180u;
-	if (h < 1u)
-		h = 1u;
-	if (h > SH_TX_MAX_HALF)
-		h = SH_TX_MAX_HALF;
-	return (uint8_t)h;
-}
-
 static uint8_t energy_to_blocks(uint16_t energy)
 {
 	/* energy is roughly 0..400 → 0..SH_RX_MAX_BLOCKS */
@@ -653,11 +614,8 @@ static void reset_wave_state(void)
 {
 	memset(s_rx_band, 0, sizeof(s_rx_band));
 	memset(s_rx_tip, 0, sizeof(s_rx_tip));
-	memset(s_tx_bars, 0, sizeof(s_tx_bars));
 	s_rx_phase = 0;
 	s_rx_tip_div = 0;
-	s_tx_hold = 0;
-	s_tx_floor = 200u;
 }
 
 static bool rx_pillars_alive(void)
@@ -761,27 +719,16 @@ static void sample_rx_wave(void)
 	}
 }
 
-static void sample_tx_wave(void)
+static uint16_t tx_wave_rand_u16(void)
 {
-	uint16_t amp = BK4819_GetVoiceAmplitudeOut();
-	if (amp == 0u)
-		amp = 200u;
-
-	if (s_tx_hold > 0u) {
-		s_tx_hold--;
-		return; /* pause scroll while loud — “根据大小停顿” */
-	}
-
-	/* shift right; insert newest at left */
-	for (int i = (int)SH_TX_BARS - 1; i > 0; i--)
-		s_tx_bars[i] = s_tx_bars[i - 1];
-	s_tx_bars[0] = voice_to_tx_half(amp);
-
-	/* brief hold only on strong peaks so the scroll stays lively */
-	if (s_tx_bars[0] >= (SH_TX_MAX_HALF - 1u))
-		s_tx_hold = 1u;
-	else
-		s_tx_hold = 0u;
+	uint32_t x = s_tx_wave_prng;
+	if (x == 0u)
+		x = 0xACE1u;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	s_tx_wave_prng = x;
+	return (uint16_t)(x & 0xFFFFu);
 }
 
 static void clear_wave_area(void)
@@ -963,24 +910,58 @@ static void draw_rx_wave(void)
 
 static void draw_tx_wave(void)
 {
-	const uint8_t mid = (uint8_t)(SH_WAVE_Y + SH_WAVE_H / 2u);
+	const uint8_t wave_top = SH_WAVE_Y;
+	const uint8_t wave_bottom = (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u);
+	const uint8_t inner_left = 0u;
+	const uint8_t inner_right = (uint8_t)(LCD_WIDTH - 1u);
+	const uint8_t center_y = (uint8_t)(((uint16_t)wave_top + (uint16_t)wave_bottom) / 2u);
+	const uint8_t max_up = (uint8_t)(center_y - wave_top);
+	const uint8_t max_dn = (uint8_t)(wave_bottom - center_y);
+	const uint8_t n_cols = LCD_WIDTH;
+	uint8_t peak = (uint8_t)((n_cols - 1u) / 2u);
+	uint8_t col_idx;
 
-	clear_wave_area(); /* only TX clears the wave row to blank first */
+	clear_wave_area();
 
-	/* baseline */
-	for (uint8_t x = 0; x < LCD_WIDTH; x++)
-		draw_pixel(x, mid, true);
+	/* center axis + dense 1px columns, diamond envelope (Dondji TX popup) */
+	for (uint8_t x = inner_left; x <= inner_right; x++)
+		draw_pixel(x, center_y, true);
 
-	/* 1px hairline bars, 1px gap — height reaches full wave row */
-	for (uint8_t i = 0; i < SH_TX_BARS; i++) {
-		const uint8_t h = s_tx_bars[i];
-		if (h == 0u)
-			continue;
-		const uint8_t x = (uint8_t)(i * SH_TX_PITCH);
-		for (uint8_t dy = 1; dy <= h; dy++) {
-			draw_pixel(x, (uint8_t)(mid - dy), true);
-			draw_pixel(x, (uint8_t)(mid + dy), true);
-		}
+	if (peak == 0u)
+		peak = 1u;
+
+	col_idx = 0u;
+	while (col_idx < n_cols) {
+		uint16_t env_u16;
+		uint8_t  up_limit;
+		uint8_t  dn_limit;
+		uint8_t  h_up;
+		uint8_t  h_dn;
+		uint16_t prng_a;
+		uint16_t prng_b;
+
+		if (n_cols <= 1u)
+			env_u16 = 255u;
+		else if (col_idx <= peak)
+			env_u16 = (uint16_t)col_idx * 255u / (uint16_t)peak;
+		else
+			env_u16 = (uint16_t)(n_cols - 1u - col_idx) * 255u / (uint16_t)peak;
+
+		up_limit = (uint8_t)(((uint16_t)max_up * env_u16) / 255u);
+		dn_limit = (uint8_t)(((uint16_t)max_dn * env_u16) / 255u);
+
+		prng_a = tx_wave_rand_u16();
+		prng_b = tx_wave_rand_u16();
+
+		h_up = (up_limit == 0u) ? 0u : (uint8_t)(prng_a % (uint16_t)(up_limit + 1u));
+		h_dn = (dn_limit == 0u) ? 0u : (uint8_t)(prng_b % (uint16_t)(dn_limit + 1u));
+
+		fill_rect((uint8_t)(inner_left + col_idx),
+		          (uint8_t)(center_y - h_up),
+		          (uint8_t)(inner_left + col_idx),
+		          (uint8_t)(center_y + h_dn),
+		          true);
+		col_idx++;
 	}
 }
 
@@ -1255,12 +1236,10 @@ void UI_SyrupHome_Tick10ms(void)
 		capture_last_rx();
 	s_was_rx = rx;
 
-	if (tx) {
-		sample_tx_wave();
-	} else if (rx) {
+	if (!tx && rx) {
 		sample_rx_wave();
 		s_placeholder_blit_done = false;
-	} else if (rx_pillars_alive()) {
+	} else if (!tx && rx_pillars_alive()) {
 		/* no signal / left RX — keep falling tips, do not clear */
 		sample_rx_decay();
 		s_placeholder_blit_done = false;
