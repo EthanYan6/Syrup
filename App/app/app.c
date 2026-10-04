@@ -2012,14 +2012,22 @@ void APP_TimeSlice500ms(void)
         if (gSleepModeCountdown_500ms > 0 && --gSleepModeCountdown_500ms == 0) {
             gBacklightCountdown_500ms = 0;
             gPowerSave_10ms = 1;
-            gWakeUp = true;
-#ifdef ENABLE_FEAT_F4HWN_LOGO_SAV
-            ScreenSaverExit();
-#endif
             // TODO:
             // PWM_PLUS0_CH0_COMP = 0;
             BACKLIGHT_SetBrightness(0);
+#ifdef ENABLE_FEAT_F4HWN_LOGO_SAV
+            /* sleep shows the screen saver as its display: start it if the
+             * backlight timeout hasn't already, and keep the LCD powered so
+             * the image stays visible instead of blanking to white */
+            if (gSetting_set_sav != SET_SAV_OFF)
+                ScreenSaverTryDisplay();
+            gWakeUp = true;
+            if (!gScreenSaverDisplayed)
+                ST7565_ShutDown();
+#else
+            gWakeUp = true;
             ST7565_ShutDown();
+#endif
         }
         else if(gSleepModeCountdown_500ms != 0 && gSleepModeCountdown_500ms < 21 && gSetting_set_off != 0)
         {

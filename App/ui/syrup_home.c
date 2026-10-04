@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "app/action.h"
+#include "app/app.h"
 #include "app/dtmf.h"
 #ifdef ENABLE_AM_FIX
 #include "am_fix.h"
@@ -1109,15 +1110,44 @@ static void draw_wave_overlay(void)
 	draw_small_text(msg, x, y, true);
 }
 
+#ifdef ENABLE_VOX
+/* VOX armed: inverted (black bg / white text) "vox" tag.
+ * RX/idle: under the S-meter line, right-aligned with the scale's right end.
+ * TX: smaller 3x5 tag centered in the TX animation. */
+static void draw_vox_tag(bool tx)
+{
+	if (tx) {
+		const uint8_t w = smallest_width("vox");
+		const uint8_t x = (uint8_t)((LCD_WIDTH - w) / 2u);
+		const uint8_t y = (uint8_t)(SH_WAVE_Y + SH_WAVE_H / 2u - 3u);
+		fill_rect((uint8_t)(x - 1u), (uint8_t)(y - 1u),
+		          (uint8_t)(x + w), (uint8_t)(y + 5u), true);
+		draw_smallest_abs("vox", x, y, false);
+	} else {
+		const uint8_t w = small_text_width("vox");
+		const uint8_t x = (uint8_t)(SH_METER_X1 - w - 1u);
+		fill_rect(x, (uint8_t)(SH_METER_LINE_Y + 2u), SH_METER_X1,
+		          (uint8_t)(SH_WAVE_Y + SH_WAVE_H - 1u), true);
+		draw_small_text("vox", x, (uint8_t)(SH_METER_LINE_Y + 3u), false);
+	}
+}
+#endif
+
 /* TX: full-width TX animation only (no status column, no scale).
  * Prompt active: whole band cleared, centered text only, until it times out.
- * Otherwise: left status column + always-on S-meter scale/line/needle. */
+ * Otherwise: left status column + always-on S-meter scale/line/needle.
+ * VOX armed adds an inverted "vox" tag: under the scale's right end, or
+ * small and centered in the TX animation while transmitting. */
 static void draw_wave_row(void)
 {
 	clear_wave_area();
 
 	if (gCurrentFunction == FUNCTION_TRANSMIT) {
 		draw_tx_wave();
+#ifdef ENABLE_VOX
+		if (gEeprom.VOX_SWITCH)
+			draw_vox_tag(true);
+#endif
 		return;
 	}
 
@@ -1128,6 +1158,10 @@ static void draw_wave_row(void)
 
 	draw_left_status_column();
 	draw_s_meter(FUNCTION_IsRx());
+#ifdef ENABLE_VOX
+	if (gEeprom.VOX_SWITCH)
+		draw_vox_tag(false);
+#endif
 }
 
 static void blit_wave_lines(void)
@@ -1170,6 +1204,11 @@ static void name_scroll_tick(void)
 void UI_SyrupHome_Tick10ms(void)
 {
 	if (gScreenToDisplay != DISPLAY_MAIN)
+		return;
+
+	/* screen saver owns the whole screen: don't redraw the meter band
+	 * over it (this is what truncated its bottom in non-triple-watch) */
+	if (APP_IsScreenSaverDisplayed())
 		return;
 
 	name_scroll_tick();
