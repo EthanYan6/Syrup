@@ -674,7 +674,7 @@ window.SyrupSerial = {
     await disconnect();
   },
   /**
-   * @param {{callsign:string, altitudeM:number, distanceM:number, frequency?:number, listen?:boolean, openPage?:boolean}} target
+   * @param {{callsign:string, altitudeM:number, distanceKm10:number, frequency?:number, listen?:boolean, openPage?:boolean}} target
    */
   pushAircraft: async function (target) {
     if (!writer) {
@@ -692,8 +692,8 @@ window.SyrupSerial = {
       : -2147483648;
     v.setInt32(12, alt, true);
     let dist = 0xFFFF;
-    if (target && typeof target.distanceM === 'number' && isFinite(target.distanceM) && target.distanceM >= 0) {
-      dist = Math.min(0xFFFE, Math.round(target.distanceM));
+    if (target && typeof target.distanceKm10 === 'number' && isFinite(target.distanceKm10) && target.distanceKm10 >= 0) {
+      dist = Math.min(0xFFFE, Math.round(target.distanceKm10));
     }
     v.setUint16(16, dist, true);
     const freq = (target && target.frequency) ? (target.frequency >>> 0) : 0;
@@ -706,7 +706,7 @@ window.SyrupSerial = {
   },
   /**
    * APRS target for the radio LCD. Command 0x0542 (0x0543 ACK).
-   * @param {{callsign:string, bearing?:number, distanceM:number, course?:number, speedKmh?:number, lasttime?:number, altitudeM?:number, comment?:string, openPage?:boolean}} target
+   * @param {{callsign:string, bearing?:number, distanceKm10:number, course?:number, speedKmh?:number, lasttime?:number, altitudeM?:number, comment?:string, openPage?:boolean}} target
    */
   pushAprs: async function (target) {
     if (!writer) {
@@ -735,7 +735,7 @@ window.SyrupSerial = {
     if (target && typeof target.bearing === 'number' && isFinite(target.bearing) && target.bearing >= 0) {
       brg = Math.round(target.bearing) % 360;
     }
-    let dist = u16orUnk(target && target.distanceM);
+    let dist = u16orUnk(target && target.distanceKm10);
     let spd = u16orUnk(target && target.speedKmh);
     let cse = unk;
     if (target && typeof target.course === 'number' && isFinite(target.course) && target.course >= 0) {

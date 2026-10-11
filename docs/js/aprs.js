@@ -305,13 +305,13 @@
       noteUserPush();
     }
     var label = (st && st.name) || '';
-    var distM = (st && typeof st.distanceKm === 'number' && isFinite(st.distanceKm))
-      ? Math.min(65534, Math.round(st.distanceKm * 1000))
+    var distKm10 = (st && typeof st.distanceKm === 'number' && isFinite(st.distanceKm))
+      ? Math.min(65534, Math.round(st.distanceKm * 10))
       : 0xFFFF;
     api.pushAprs({
       callsign: label,
       bearing: (st && typeof st.bearing === 'number' && isFinite(st.bearing)) ? Math.round(st.bearing) : -1,
-      distanceM: distM,
+      distanceKm10: distKm10,
       course: (st && typeof st.course === 'number' && isFinite(st.course)) ? Math.round(st.course) : -1,
       speedKmh: (st && typeof st.speedKmh === 'number' && isFinite(st.speedKmh)) ? Math.round(st.speedKmh) : -1,
       lasttime: (st && typeof st.lasttime === 'number' && isFinite(st.lasttime)) ? st.lasttime : 0,

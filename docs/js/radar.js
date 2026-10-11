@@ -289,13 +289,13 @@
     }
     var label = (flight && flight.flightId) || (ac && ac.icao) || '';
     var altM = (ac && typeof ac.alt === 'number' && isFinite(ac.alt)) ? Math.round(ac.alt) : -2147483648;
-    var distM = (ac && typeof ac.distanceKm === 'number' && isFinite(ac.distanceKm))
-      ? Math.min(65534, Math.round(ac.distanceKm * 1000))
+    var distKm10 = (ac && typeof ac.distanceKm === 'number' && isFinite(ac.distanceKm))
+      ? Math.min(65534, Math.round(ac.distanceKm * 10))
       : 0xFFFF;
     api.pushAircraft({
       callsign: label,
       altitudeM: altM,
-      distanceM: distM,
+      distanceKm10: distKm10,
       frequency: 0,
       listen: true,
       openPage: true

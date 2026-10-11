@@ -721,7 +721,7 @@ static void CMD_052F(uint32_t Port, const uint8_t *pBuffer)
 
 #ifdef ENABLE_AIRCRAFT_RADAR
 /* Push aircraft target + optional AM listen / open page.
- * Payload (after header): callsign[8], altitude_m int32, distance_m uint16,
+ * Payload (after header): callsign[8], altitude_m int32, distance_0.1km uint16,
  * frequency uint32 (10 Hz units, 0 = keep), flags uint8
  *   bit0 = listen now, bit1 = open page
  */
@@ -729,7 +729,7 @@ typedef struct __attribute__((packed)) {
 	Header_t Header;
 	char     Callsign[8];
 	int32_t  AltitudeM;
-	uint16_t DistanceM;
+	uint16_t DistanceKm10; /* 0.1 km units, 0xFFFF = unknown */
 	uint32_t Frequency;
 	uint8_t  Flags;
 } CMD_0540_t;
@@ -747,7 +747,7 @@ static void CMD_0540(uint32_t Port, const uint8_t *pBuffer)
 
 	AIRCRAFT_SetTarget(callsign,
 	                   pCmd->AltitudeM,
-	                   pCmd->DistanceM,
+	                   pCmd->DistanceKm10,
 	                   pCmd->Frequency,
 	                   (pCmd->Flags & 1u) != 0,
 	                   (pCmd->Flags & 2u) != 0);
@@ -760,7 +760,7 @@ static void CMD_0540(uint32_t Port, const uint8_t *pBuffer)
 
 #ifdef ENABLE_APRS
 /* Payload after header (Size >= 19):
- *   callsign[10], bearing u16, distance_m u16, speed_kmh u16, course u16,
+ *   callsign[10], bearing u16, distance_0.1km u16, speed_kmh u16, course u16,
  *   flags u8. 0xFFFF = unknown. flags bit1 = open page. ACK 0x0543.
  * Size >= 25 also has: year u16, month u8, day u8, altitude_m i16
  *   (year 0 / altitude 0x8000 = unknown), then comment UTF-8.
@@ -769,7 +769,7 @@ typedef struct __attribute__((packed)) {
 	Header_t Header;
 	char     Callsign[10];
 	uint16_t BearingDeg;
-	uint16_t DistanceM;
+	uint16_t DistanceKm10; /* 0.1 km units, 0xFFFF = unknown */
 	uint16_t SpeedKmh;
 	uint16_t CourseDeg;
 	uint8_t  Flags;
@@ -804,7 +804,7 @@ static void CMD_0542(uint32_t Port, const uint8_t *pBuffer)
 		clen = (extra > 80u) ? 80u : (uint8_t)extra;
 		cmt = (const char *)(pBuffer + sizeof(Header_t) + extra_off);
 	}
-	APRS_SetTarget(pCmd->Callsign, pCmd->BearingDeg, pCmd->DistanceM,
+	APRS_SetTarget(pCmd->Callsign, pCmd->BearingDeg, pCmd->DistanceKm10,
 	               pCmd->SpeedKmh, pCmd->CourseDeg, year, month, day, alt,
 	               cmt, clen, (pCmd->Flags & 2u) != 0);
 	Reply.ID = 0x0543;

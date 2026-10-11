@@ -183,7 +183,7 @@ static void dart_c(int16_t cy, uint16_t brg)
 	}
 }
 
-void APRS_SetTarget(const char *callsign, uint16_t bearing_deg, uint16_t distance_m,
+void APRS_SetTarget(const char *callsign, uint16_t bearing_deg, uint16_t distance_km10,
                     uint16_t speed_kmh, uint16_t course_deg,
                     uint16_t year, uint8_t month, uint8_t day, int16_t altitude_m,
                     const char *comment, uint8_t comment_len, bool open_page)
@@ -204,8 +204,8 @@ void APRS_SetTarget(const char *callsign, uint16_t bearing_deg, uint16_t distanc
 		gAprs.callsign[di] = '\0';
 	}
 
-	gAprs.bearing_deg = (bearing_deg < 360u) ? bearing_deg : APRS_UNK;
-	gAprs.distance_m  = distance_m;
+	gAprs.bearing_deg  = (bearing_deg < 360u) ? bearing_deg : APRS_UNK;
+	gAprs.distance_km10 = distance_km10;
 	gAprs.speed_kmh   = speed_kmh;
 	gAprs.course_deg  = (course_deg < 360u) ? course_deg : APRS_UNK;
 	gAprs.year        = year;
@@ -410,12 +410,12 @@ static void radar_page(void)
 
 	put_deg_row("BRG ", gAprs.bearing_deg, 1);
 
-	if (!gAprs.has_target || gAprs.distance_m == APRS_UNK)
+	if (!gAprs.has_target || gAprs.distance_km10 == APRS_UNK)
 		strcpy(s, "DIST ---");
-	else if (gAprs.distance_m < 10000u)
-		sprintf(s, "DIST %u.%ukm", gAprs.distance_m / 1000u, (gAprs.distance_m % 1000u) / 100u);
+	else if (gAprs.distance_km10 < 100u)
+		sprintf(s, "DIST %u.%ukm", gAprs.distance_km10 / 10u, gAprs.distance_km10 % 10u);
 	else
-		sprintf(s, "DIST %ukm", gAprs.distance_m / 1000u);
+		sprintf(s, "DIST %ukm", (gAprs.distance_km10 + 5u) / 10u);
 	put_row(s, 2);
 
 	if (!gAprs.has_target || gAprs.speed_kmh == APRS_UNK)

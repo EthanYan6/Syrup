@@ -19,7 +19,7 @@
 typedef struct {
 	char     callsign[AIRCRAFT_CALLSIGN_MAX + 1];
 	int32_t  altitude_m;   /* INT32_MIN = unknown */
-	uint16_t distance_m;   /* 0xFFFF = unknown; meters, saturates */
+	uint16_t distance_km10;/* 0.1 km units, 0xFFFF = unknown (max 6553.4 km) */
 	uint32_t frequency;    /* 10 Hz units, airband AM */
 	bool     has_target;
 } Aircraft_Target_t;
@@ -36,7 +36,7 @@ void AIRCRAFT_Save(void);
 void AIRCRAFT_Listen(void);
 
 /* Update target fields (e.g. from UART). callsign may be NULL to leave unchanged. */
-void AIRCRAFT_SetTarget(const char *callsign, int32_t altitude_m, uint16_t distance_m,
+void AIRCRAFT_SetTarget(const char *callsign, int32_t altitude_m, uint16_t distance_km10,
                         uint32_t frequency, bool listen_now, bool open_page);
 
 #endif /* ENABLE_AIRCRAFT_RADAR */

@@ -40,13 +40,15 @@
  * Must stay inside the 0x009000 mapping and below settings @ 0x00A000
  * (multi-system core/settings live map). */
 #define AIRCRAFT_FLASH_ADDR  0x0090E7u
-#define AIRCRAFT_FLASH_MAGIC 0xACu
+/* Bumped 0xAC → 0xAD: distance unit changed meters → 0.1 km, old records are
+ * discarded (magic mismatch) instead of being misread. */
+#define AIRCRAFT_FLASH_MAGIC 0xADu
 
 typedef struct __attribute__((packed)) {
 	uint8_t  magic;
 	char     callsign[AIRCRAFT_CALLSIGN_MAX];
 	int32_t  altitude_m;
-	uint16_t distance_m;
+	uint16_t distance_km10; /* 0.1 km units, 0xFFFF = unknown */
 	uint32_t frequency;
 	uint8_t  flags; /* bit0 = has_target */
 } Aircraft_Flash_t;
@@ -55,9 +57,9 @@ static_assert(sizeof(Aircraft_Flash_t) == 20);
 static_assert(AIRCRAFT_FLASH_ADDR + sizeof(Aircraft_Flash_t) == 0x0090FBu);
 
 Aircraft_Target_t gAircraft = {
-	.callsign    = {0},
-	.altitude_m  = INT32_MIN,
-	.distance_m  = 0xFFFFu,
+	.callsign     = {0},
+	.altitude_m   = INT32_MIN,
+	.distance_km10 = 0xFFFFu,
 	.frequency   = AIRCRAFT_DEFAULT_FREQ,
 	.has_target  = false,
 };
@@ -105,8 +107,8 @@ void AIRCRAFT_Save(void)
 	memset(&flash, 0xFFu, sizeof(flash));
 	flash.magic = AIRCRAFT_FLASH_MAGIC;
 	memcpy(flash.callsign, gAircraft.callsign, AIRCRAFT_CALLSIGN_MAX);
-	flash.altitude_m = gAircraft.altitude_m;
-	flash.distance_m = gAircraft.distance_m;
+	flash.altitude_m    = gAircraft.altitude_m;
+	flash.distance_km10 = gAircraft.distance_km10;
 	flash.frequency  = gAircraft.frequency;
 	flash.flags      = gAircraft.has_target ? 1u : 0u;
 
@@ -133,8 +135,8 @@ void AIRCRAFT_Load(void)
 			gAircraft.callsign[i] = '\0';
 	}
 
-	gAircraft.altitude_m = flash.altitude_m;
-	gAircraft.distance_m = flash.distance_m;
+	gAircraft.altitude_m    = flash.altitude_m;
+	gAircraft.distance_km10 = flash.distance_km10;
 	if (flash.frequency != 0 && flash.frequency != 0xFFFFFFFFu)
 		gAircraft.frequency = AIRCRAFT_ClampAirband(flash.frequency);
 	gAircraft.has_target = (flash.flags & 1u) != 0 && gAircraft.callsign[0] != '\0';
@@ -193,14 +195,14 @@ void AIRCRAFT_Listen(void)
 	AIRCRAFT_Save();
 }
 
-void AIRCRAFT_SetTarget(const char *callsign, int32_t altitude_m, uint16_t distance_m,
+void AIRCRAFT_SetTarget(const char *callsign, int32_t altitude_m, uint16_t distance_km10,
                        uint32_t frequency, bool listen_now, bool open_page)
 {
 	if (callsign)
 		AIRCRAFT_SanitizeCallsign(gAircraft.callsign, callsign);
 
-	gAircraft.altitude_m = altitude_m;
-	gAircraft.distance_m = distance_m;
+	gAircraft.altitude_m    = altitude_m;
+	gAircraft.distance_km10 = distance_km10;
 	if (frequency != 0)
 		gAircraft.frequency = AIRCRAFT_ClampAirband(frequency);
 	gAircraft.has_target = (gAircraft.callsign[0] != '\0');
@@ -589,14 +591,14 @@ void UI_DisplayAircraft(void)
 			else
 				sprintf(line0, "高度 %ldm", (long)gAircraft.altitude_m);
 
-			if (gAircraft.distance_m == 0xFFFFu)
+			if (gAircraft.distance_km10 == 0xFFFFu)
 				strcpy(line1, "距离 ---");
-			else if (gAircraft.distance_m < 10000u)
+			else if (gAircraft.distance_km10 < 100u)
 				sprintf(line1, "距离 %u.%ukm",
-				        gAircraft.distance_m / 1000u,
-				        (gAircraft.distance_m % 1000u) / 100u);
+				        gAircraft.distance_km10 / 10u,
+				        gAircraft.distance_km10 % 10u);
 			else
-				sprintf(line1, "距离 %ukm", gAircraft.distance_m / 1000u);
+				sprintf(line1, "距离 %ukm", (gAircraft.distance_km10 + 5u) / 10u);
 
 			sprintf(line2, "频率 %u.%03u AM",
 			        f / 100000u, (f / 100u) % 1000u);
@@ -613,14 +615,14 @@ void UI_DisplayAircraft(void)
 			else
 				sprintf(line0, "ALT  %ldm", (long)gAircraft.altitude_m);
 
-			if (gAircraft.distance_m == 0xFFFFu)
+			if (gAircraft.distance_km10 == 0xFFFFu)
 				strcpy(line1, "DIST ---");
-			else if (gAircraft.distance_m < 10000u)
+			else if (gAircraft.distance_km10 < 100u)
 				sprintf(line1, "DIST %u.%ukm",
-				        gAircraft.distance_m / 1000u,
-				        (gAircraft.distance_m % 1000u) / 100u);
+				        gAircraft.distance_km10 / 10u,
+				        gAircraft.distance_km10 % 10u);
 			else
-				sprintf(line1, "DIST %ukm", gAircraft.distance_m / 1000u);
+				sprintf(line1, "DIST %ukm", (gAircraft.distance_km10 + 5u) / 10u);
 
 			sprintf(line2, "FREQ %u.%03u AM",
 			        f / 100000u, (f / 100u) % 1000u);

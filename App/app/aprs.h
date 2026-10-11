@@ -20,7 +20,7 @@
 typedef struct {
 	char     callsign[APRS_CALLSIGN_MAX + 1];
 	uint16_t bearing_deg;  /* 0xFFFF = unknown */
-	uint16_t distance_m;   /* 0xFFFF = unknown */
+	uint16_t distance_km10;/* 0.1 km units, 0xFFFF = unknown (max 6553.4 km) */
 	uint16_t speed_kmh;    /* 0xFFFF = unknown */
 	uint16_t course_deg;   /* 0xFFFF = unknown */
 	uint16_t year;         /* 0 = unknown */
@@ -37,7 +37,7 @@ void ACTION_Aprs(void);
 void APRS_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld);
 void UI_DisplayAprs(void);
 
-void APRS_SetTarget(const char *callsign, uint16_t bearing_deg, uint16_t distance_m,
+void APRS_SetTarget(const char *callsign, uint16_t bearing_deg, uint16_t distance_km10,
                     uint16_t speed_kmh, uint16_t course_deg,
                     uint16_t year, uint8_t month, uint8_t day, int16_t altitude_m,
                     const char *comment, uint8_t comment_len, bool open_page);
